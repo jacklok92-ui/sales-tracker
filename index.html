@@ -29,7 +29,7 @@ input,select,textarea{width:100%;padding:11px 12px;border:1px solid #dcdad2;bord
 </head>
 <body>
 <div class="app">
-<header class="top"><div><div class="brand">Sales Tracker</div><div class="sub">Insurance CRM · V1.12.3</div></div><button class="primary" onclick="startCase()">＋ New Case</button></header>
+<header class="top"><div><div class="brand">Sales Tracker</div><div class="sub">Insurance CRM · V1.12.4</div></div><button class="primary" onclick="startCase()">＋ New Case</button></header>
 <nav id="nav">
 <button class="active" onclick="show('home',this)">Home</button>
 <button onclick="show('pipeline',this)">Pipeline</button>
@@ -181,25 +181,27 @@ function saveCaseForm(e,mode,reduceId){e.preventDefault();let fd=new FormData(e.
 }
 
 function home(){
-  const m=monthKey();
-  // Home = current-month production only. Imported historical policies are not treated as new production.
-  const productionRows=db.cases.filter(c=>c.inforce?.startsWith(m)&&c.kind!=='Reduce'&&c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='Inforce');
+  // Home Production Overview = unified sales history.
+  // Imported Existing Policy + New Business + Top Up are all included by Inforce Date.
+  // Reduce records are excluded because they are reductions, not production.
+  const productionRows=db.cases.filter(c=>c.inforce&&c.kind!=='Reduce');
   const productionTPC=productionRows.reduce((s,c)=>s+tpc(c),0);
   const productionCases=Math.floor(productionTPC/1800);
 
-  // Existing portfolio is kept separate here, but uses the same unified imported dataset as Sales/Income.
+  // Keep the active imported portfolio and current estimated recurring income separately.
   const activeExisting=db.cases.filter(c=>c.kind==='Existing Policy'&&normalizeStatus(c.status)==='Inforce');
-  const existingIncome=activeExisting.reduce((s,c)=>s+monthlyComm(c,m+'-01'),0);
+  const currentKey=monthKey();
+  const existingIncome=activeExisting.reduce((s,c)=>s+monthlyComm(c,currentKey+'-01'),0);
   const ongoing=db.contests.filter(x=>x.start<=new Date().toISOString().slice(0,10)&&x.end>=new Date().toISOString().slice(0,10));
 
-  document.getElementById('home').innerHTML=`<div class="section">${new Date().toLocaleString('en-MY',{month:'long',year:'numeric'})} · Production Overview</div>
+  document.getElementById('home').innerHTML=`<div class="section">Production Overview · All Sales History</div>
   <div class="grid">
-    <div class="card" onclick="breakdown('TPC',productionRows)"><div class="label">TPC</div><div class="metric">${money(productionTPC)}</div><div class="small">Current-month production · Tap to view breakdown</div></div>
+    <div class="card" onclick="breakdown('TPC',productionRows)"><div class="label">TPC</div><div class="metric">${money(productionTPC)}</div><div class="small">Imported + New Business + Top Up · Tap to view breakdown</div></div>
     <div class="card" onclick="breakdown('Cases',productionRows)"><div class="label">Cases</div><div class="metric">${productionCases}</div><div class="small">RM1,800 TPC = 1 case · Tap to view</div></div>
   </div>
   <div class="section">Existing Portfolio</div>
   <div class="grid">
-    <div class="card" onclick="breakdown('Active Imported Policies',activeExisting)"><div class="label">Active Imported Policies</div><div class="metric">${activeExisting.length}</div><div class="small">All active imported policies</div></div>
+    <div class="card" onclick="breakdown('Active Imported Policies',activeExisting)"><div class="label">Active Imported Policies</div><div class="metric">${activeExisting.length}</div><div class="small">All active imported policies · Tap to view</div></div>
     <div class="card" onclick="breakdown('Estimated Existing Income',activeExisting,'income')"><div class="label">Estimated Monthly Income</div><div class="metric">${money(existingIncome)}</div><div class="small">Based on Inforce Date & commission cycle · Tap to view</div></div>
   </div>
   <div class="section">Ongoing Contests</div><div class="list">${ongoing.map(x=>`<div class="card"><div class="row"><b>${x.name}</b><span class="pill yellow">${x.metric}</span></div><div class="small">${x.start} → ${x.end}</div><div class="metric">${contestValue(x)}</div></div>`).join('')||'<div class="empty">No ongoing contests.</div>'}</div>`;
