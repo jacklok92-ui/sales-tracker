@@ -29,7 +29,7 @@ input,select,textarea{width:100%;padding:11px 12px;border:1px solid #dcdad2;bord
 </head>
 <body>
 <div class="app">
-<header class="top"><div><div class="brand">Sales Tracker</div><div class="sub">Insurance CRM · V1.12.4</div></div><button class="primary" onclick="startCase()">＋ New Case</button></header>
+<header class="top"><div><div class="brand">Sales Tracker</div><div class="sub">Insurance CRM · V1.12.5</div></div><button class="primary" onclick="startCase()">＋ New Case</button></header>
 <nav id="nav">
 <button class="active" onclick="show('home',this)">Home</button>
 <button onclick="show('pipeline',this)">Pipeline</button>
@@ -196,8 +196,8 @@ function home(){
 
   document.getElementById('home').innerHTML=`<div class="section">Production Overview · Current Month</div>
   <div class="grid">
-    <div class="card" onclick="breakdown('TPC',productionRows)"><div class="label">TPC</div><div class="metric">${money(productionTPC)}</div><div class="small">Current-month production · Tap to view breakdown</div></div>
-    <div class="card" onclick="breakdown('Cases',productionRows)"><div class="label">Cases</div><div class="metric">${productionCases}</div><div class="small">RM1,800 TPC = 1 case · Tap to view</div></div>
+    <div class="card" role="button" tabindex="0" onclick="homeProductionBreakdown('TPC',productionRows)" onkeydown="if(event.key==='Enter'||event.key===' ')homeProductionBreakdown('TPC',productionRows)"><div class="label">TPC</div><div class="metric">${money(productionTPC)}</div><div class="small">Current-month production · Tap to view breakdown</div></div>
+    <div class="card" role="button" tabindex="0" onclick="homeProductionBreakdown('Cases',productionRows)" onkeydown="if(event.key==='Enter'||event.key===' ')homeProductionBreakdown('Cases',productionRows)"><div class="label">Cases</div><div class="metric">${productionCases}</div><div class="small">RM1,800 TPC = 1 case · Tap to view breakdown</div></div>
   </div>
   <div class="section">Existing Portfolio</div>
   <div class="grid">
@@ -206,6 +206,27 @@ function home(){
   </div>
   <div class="section">Ongoing Contests</div><div class="list">${ongoing.map(x=>`<div class="card"><div class="row"><b>${x.name}</b><span class="pill yellow">${x.metric}</span></div><div class="small">${x.start} → ${x.end}</div><div class="metric">${contestValue(x)}</div></div>`).join('')||'<div class="empty">No ongoing contests.</div>'}</div>`;
 }
+function homeProductionBreakdown(type, rows){
+  const totalTPC = rows.reduce((s,c)=>s+tpc(c),0);
+  const caseCount = Math.floor(totalTPC/1800);
+  const title = type==='TPC' ? 'Current Month · TPC Breakdown' : 'Current Month · Cases Breakdown';
+  const summary = type==='TPC'
+    ? `${rows.length} production record${rows.length===1?'':'s'} · ${money(totalTPC)}`
+    : `${caseCount} case${caseCount===1?'':'s'} · ${rows.length} production record${rows.length===1?'':'s'} · ${money(totalTPC)} TPC`;
+  modal(title, `<div class="small" style="margin-bottom:12px">${summary}</div>
+    <div class="list">${rows.map((c,i)=>`
+      <div class="item">
+        <div class="row">
+          <div>
+            <b>${c.client||'-'}</b>
+            <div class="small">${c.product||c.type||'-'} · ${c.kind||'New Business'}</div>
+            <div class="small">${dateStr(c.inforce)} · ${c.policyNumber||'-'}</div>
+          </div>
+          <b>${money(tpc(c))}</b>
+        </div>
+      </div>`).join('') || '<div class="empty">No current-month production.</div>'}</div>`, true);
+}
+
 function breakdown(title,rows,mode='tpc'){
  let total=rows.reduce((s,c)=>s+(mode==='income'?monthlyComm(c,monthKey()+'-01'):tpc(c)),0);
  modal(title+' Breakdown',`<div class="small" style="margin-bottom:12px">${rows.length} record${rows.length===1?'':'s'} · ${money(total)}</div><div class="list">${rows.map(c=>`<div class="item"><div class="row"><div><b>${c.client||'-'}</b><div class="small">${c.product||c.type||'-'} · ${c.kind||'New Business'}</div><div class="small">${dateStr(c.inforce)} · ${c.policyNumber||'-'}</div></div><b>${money(mode==='income'?monthlyComm(c,monthKey()+'-01'):tpc(c))}</b></div></div>`).join('')||'<div class="empty">No records.</div>'}</div>`,true)
