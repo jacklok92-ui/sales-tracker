@@ -181,22 +181,22 @@ function saveCaseForm(e,mode,reduceId){e.preventDefault();let fd=new FormData(e.
 }
 
 function home(){
-  // Home Production Overview = unified sales history.
-  // Imported Existing Policy + New Business + Top Up are all included by Inforce Date.
-  // Reduce records are excluded because they are reductions, not production.
-  const productionRows=db.cases.filter(c=>c.inforce&&c.kind!=='Reduce');
+  // Home Production Overview = CURRENT MONTH only.
+  // New Business + Top Up are included. Imported Existing Policy is included only
+  // when its Inforce Date falls in the current month. Reduce records are excluded.
+  const currentKey=monthKey();
+  const productionRows=db.cases.filter(c=>c.inforce?.startsWith(currentKey)&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce');
   const productionTPC=productionRows.reduce((s,c)=>s+tpc(c),0);
   const productionCases=Math.floor(productionTPC/1800);
 
   // Keep the active imported portfolio and current estimated recurring income separately.
   const activeExisting=db.cases.filter(c=>c.kind==='Existing Policy'&&normalizeStatus(c.status)==='Inforce');
-  const currentKey=monthKey();
   const existingIncome=activeExisting.reduce((s,c)=>s+monthlyComm(c,currentKey+'-01'),0);
   const ongoing=db.contests.filter(x=>x.start<=new Date().toISOString().slice(0,10)&&x.end>=new Date().toISOString().slice(0,10));
 
-  document.getElementById('home').innerHTML=`<div class="section">Production Overview · All Sales History</div>
+  document.getElementById('home').innerHTML=`<div class="section">Production Overview · Current Month</div>
   <div class="grid">
-    <div class="card" onclick="breakdown('TPC',productionRows)"><div class="label">TPC</div><div class="metric">${money(productionTPC)}</div><div class="small">Imported + New Business + Top Up · Tap to view breakdown</div></div>
+    <div class="card" onclick="breakdown('TPC',productionRows)"><div class="label">TPC</div><div class="metric">${money(productionTPC)}</div><div class="small">Current-month production · Tap to view breakdown</div></div>
     <div class="card" onclick="breakdown('Cases',productionRows)"><div class="label">Cases</div><div class="metric">${productionCases}</div><div class="small">RM1,800 TPC = 1 case · Tap to view</div></div>
   </div>
   <div class="section">Existing Portfolio</div>
