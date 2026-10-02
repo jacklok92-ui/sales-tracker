@@ -217,9 +217,10 @@ function sales(){
  // Backward compatibility with V1.9 saved selector values.
  if(cfg.view==='h1'||cfg.view==='h2'){const oldHalf=cfg.view;cfg.view='half';cfg.half=oldHalf==='h2'?'second':'first';saveSalesCfgV10()}
  let dates=resolveSalesRangeV10(cfg,now);
- let rows=db.cases.filter(c=>c.inforce&&c.inforce>=dates.from&&c.inforce<=dates.to&&c.kind!=='Reduce'&&c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='Inforce');
+ // Sales history is based on Inforce Date. Imported Existing Policy records are merged into the same Sales dataset so historical production is visible in the selected period. Reduce records remain excluded.
+ let rows=db.cases.filter(c=>c.inforce&&c.inforce>=dates.from&&c.inforce<=dates.to&&c.kind!=='Reduce');
  let importedRows=db.cases.filter(c=>c.inforce&&c.inforce>=dates.from&&c.inforce<=dates.to&&c.kind==='Existing Policy');
- let t=rows.reduce((a,c)=>a+tpc(c),0), cases=rows.length, avg=cases?t/cases:0, importedTpc=importedRows.reduce((a,c)=>a+tpc(c),0);
+ let t=rows.reduce((a,c)=>a+tpc(c),0), cases=rows.length, avg=cases?t/cases:0;
  let groups={};rows.forEach(c=>{let p=normalizeProduct(c.product||c.type||'Other');groups[p]=(groups[p]||0)+tpc(c)});
  let total=Object.values(groups).reduce((a,b)=>a+b,0),colors=['#20211f','#777871','#aaa79c','#d0cdc2','#4f765c'];
  let seg=0,grad=Object.entries(groups).map(([k,v],i)=>{let a=seg;seg+=total?v/total*100:0;return `${colors[i%colors.length]} ${a}% ${seg}%`}).join(',');
@@ -242,7 +243,7 @@ function sales(){
  </div></div>
  <div class="card" style="margin-bottom:12px"><div class="label">Selected Production Range</div><div class="metric" style="font-size:19px">${formatDateRangeV10(dates.from,dates.to)}</div></div>
  <div class="grid3"><div class="card"><div class="label">Total Sales / TPC</div><div class="metric">${money(t)}</div></div><div class="card"><div class="label">Number of Cases</div><div class="metric">${cases}</div></div><div class="card"><div class="label">Average Case Size</div><div class="metric">${money(avg)}</div></div></div>
- <div class="section">Imported Existing Portfolio · Reference Only</div><div class="grid3"><div class="card"><div class="label">Existing Policies</div><div class="metric">${importedRows.length}</div><div class="small">Matched by Inforce Date</div></div><div class="card"><div class="label">Imported TPC</div><div class="metric">${money(importedTpc)}</div><div class="small">Not included in Sales Production</div></div><div class="card"><div class="label">Active in Range</div><div class="metric">${importedRows.filter(c=>normalizeStatus(c.status)==='Inforce').length}</div><div class="small">Historical portfolio reference</div></div></div>
+ <div class="section">Portfolio</div><div class="grid3"><div class="card"><div class="label">Imported Existing Policies</div><div class="metric">${importedRows.length}</div><div class="small">Included in Sales history by Inforce Date</div></div><div class="card"><div class="label">Active in Range</div><div class="metric">${importedRows.filter(c=>normalizeStatus(c.status)==='Inforce').length}</div><div class="small">Historical portfolio reference</div></div></div>
  <div class="section">Product Mix</div><div class="card"><div class="pieWrap"><div class="pie" style="background:${grad||'#ddd 0 100%'}"></div><div class="legend">${Object.entries(groups).map(([k,v])=>`<div>${k} · ${total?(v/total*100).toFixed(1):'0.0'}%</div>`).join('')||'No sales in this period.'}</div></div></div>
  <div class="section">Sales Trend · Line Chart</div><div class="card chartCard">${lineChart}<div class="chartLegend"><span><i class="dot"></i>Total Sales / TPC</span></div></div>
  <div class="section">Sales Breakdown · Bar Chart</div><div class="card chartCard">${barChart}<div class="chartLegend"><span><i class="dot barLegend"></i>${groupLabel(grouping)} Sales</span></div></div>`
