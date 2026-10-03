@@ -43,7 +43,7 @@ button.primary{background:linear-gradient(135deg,#2563eb,#7c3aed);box-shadow:0 8
 </head>
 <body>
 <div class="app">
-<header class="top"><div><div class="brand" id="brandTitle">Sales Tracker</div><div class="sub" id="brandSub">Insurance CRM · V1.13.4</div></div><div class="topActions"><button class="secondary langBtn" id="langToggle" onclick="toggleLang()">中 / EN</button><button class="primary" id="newCaseBtn" onclick="startCase()">＋ New Case</button></div></header>
+<header class="top"><div><div class="brand" id="brandTitle">Sales Tracker</div><div class="sub" id="brandSub">Insurance CRM · V1.13.5</div></div><div class="topActions"><button class="secondary langBtn" id="langToggle" onclick="toggleLang()">中 / EN</button><button class="primary" id="newCaseBtn" onclick="startCase()">＋ New Case</button></div></header>
 <nav id="nav">
 <button class="active" onclick="show('home',this)">Home</button>
 <button onclick="show('pipeline',this)">Pipeline</button>
@@ -141,7 +141,7 @@ function toast(t){let e=document.createElement('div');e.className='toast';e.text
 const TXT={zh:{home:'首页',pipeline:'Pipeline',sales:'Sales',clients:'客户',coverage:'保障计算',contest:'竞赛',income:'收入',settings:'设置',newCase:'＋ 新增 Case',coach:'AI Coach',coachTitle:'今日 Coach',ask:'问 Coach',askPlaceholder:'例如：我这个月应该先做什么？',production:'Production Overview · 当月',existing:'Existing Portfolio',activeImported:'Active Imported Policies',estimatedMonthly:'Estimated Monthly Income',ongoing:'Ongoing Contests'},en:{home:'Home',pipeline:'Pipeline',sales:'Sales',clients:'Clients',coverage:'Coverage',contest:'Contest',income:'Income',settings:'Settings',newCase:'＋ New Case',coach:'AI Coach',coachTitle:"Today's Coach",ask:'Ask Coach',askPlaceholder:'e.g. What should I focus on this month?',production:'Production Overview · Current Month',existing:'Existing Portfolio',activeImported:'Active Imported Policies',estimatedMonthly:'Estimated Monthly Income',ongoing:'Ongoing Contests'}};
 function L(k){return (TXT[appLang]||TXT.en)[k]||k}
 function toggleLang(){appLang=appLang==='zh'?'en':'zh';localStorage.setItem('salesTrackerLang',appLang);render()}
-function render(){applyTheme();document.getElementById('brandSub').textContent='Insurance CRM · V1.13.4';document.getElementById('newCaseBtn').textContent=L('newCase');const labels=['home','pipeline','sales','clients','coverage','contest','income','settings'];document.querySelectorAll('#nav button').forEach((b,i)=>b.textContent=L(labels[i]));[['home',home],['pipeline',pipeline],['sales',sales],['clients',clients],['coverage',coverage],['contest',contest],['income',income],['settings',settings]].forEach(([id,fn])=>{try{fn()}catch(err){console.error('Sales Tracker render error in '+id,err);const el=document.getElementById(id);if(el)el.innerHTML='<div class="card"><b>'+id+' failed to load</b><div class="small" style="margin-top:8px">Please refresh the app. Other sections remain available.</div></div>'}})}
+function render(){applyTheme();document.getElementById('brandSub').textContent='Insurance CRM · V1.13.5';document.getElementById('newCaseBtn').textContent=L('newCase');const labels=['home','pipeline','sales','clients','coverage','contest','income','settings'];document.querySelectorAll('#nav button').forEach((b,i)=>b.textContent=L(labels[i]));[['home',home],['pipeline',pipeline],['sales',sales],['clients',clients],['coverage',coverage],['contest',contest],['income',income],['settings',settings]].forEach(([id,fn])=>{try{fn()}catch(err){console.error('Sales Tracker render error in '+id,err);const el=document.getElementById(id);if(el)el.innerHTML='<div class="card"><b>'+id+' failed to load</b><div class="small" style="margin-top:8px">Please refresh the app. Other sections remain available.</div></div>'}})}
 
 function startCase(){modal('New Case',`<div class="menuGrid"><button class="menuBtn" onclick="chooseNB()">New Business<span>New policy / new sale</span></button><button class="menuBtn" onclick="chooseTU()">Top Up<span>Upgrade an existing policy</span></button></div>`)}
 function chooseNB(){modal('New Business',`<div class="menuGrid"><button class="menuBtn" onclick="caseForm('new')">New Client<span>Enter client details</span></button><button class="menuBtn" onclick="existingPicker('new')">Existing Client<span>Select an existing client</span></button></div>`)}
@@ -615,10 +615,45 @@ function policyBreakdown(title){
  }
 }
 function settings(){
- document.getElementById('settings').innerHTML=`<div class="section">Settings</div><div class="card"><h3>Products</h3>${db.settings.products.map((p,i)=>`<div class="row" style="margin:8px 0"><span>${p}</span><button class="danger" onclick="removeSetting('products',${i})">Remove</button></div>`).join('')}<button class="secondary" onclick="addSetting('products','Product name')">＋ Add Product</button></div><div class="card" style="margin-top:10px"><h3>Client Groups</h3><div>${db.settings.groups.join(' · ')}</div><button class="secondary" style="margin-top:10px" onclick="addSetting('groups','Group')">＋ Add Group</button></div><div class="card" style="margin-top:10px"><h3>Benefits</h3>${db.settings.benefits.map((p,i)=>`<div class="row" style="margin:8px 0"><span>${p}</span><button class="danger" onclick="removeSetting('benefits',${i})">Remove</button></div>`).join('')}<button class="secondary" onclick="addSetting('benefits','Benefit name')">＋ Add Benefit</button></div><div class="card" style="margin-top:10px"><h3>Theme</h3><select onchange="db.settings.theme=this.value;save()"><option value="ivory" ${db.settings.theme==='ivory'?'selected':''}>Ivory</option><option value="dark" ${db.settings.theme==='dark'?'selected':''}>Dark</option><option value="sage" ${db.settings.theme==='sage'?'selected':''}>Sage</option><option value="slate" ${db.settings.theme==='slate'?'selected':''}>Slate</option><option value="sand" ${db.settings.theme==='sand'?'selected':''}>Sand</option></select></div><div class="card" style="margin-top:10px"><h3>Data</h3><button class="danger" onclick="resetData()">Reset All Data</button></div>`
+ document.getElementById('settings').innerHTML=`<div class="section">Settings</div><div class="card"><h3>Products</h3>${db.settings.products.map((p,i)=>`<div class="row" style="margin:8px 0"><span>${p}</span><button class="danger" onclick="removeSetting('products',${i})">Remove</button></div>`).join('')}<button class="secondary" onclick="addSetting('products','Product name')">＋ Add Product</button></div><div class="card" style="margin-top:10px"><h3>Client Groups</h3><div>${db.settings.groups.join(' · ')}</div><button class="secondary" style="margin-top:10px" onclick="addSetting('groups','Group')">＋ Add Group</button></div><div class="card" style="margin-top:10px"><h3>Benefits</h3>${db.settings.benefits.map((p,i)=>`<div class="row" style="margin:8px 0"><span>${p}</span><button class="danger" onclick="removeSetting('benefits',${i})">Remove</button></div>`).join('')}<button class="secondary" onclick="addSetting('benefits','Benefit name')">＋ Add Benefit</button></div><div class="card" style="margin-top:10px"><h3>Theme</h3><select onchange="db.settings.theme=this.value;save()"><option value="ivory" ${db.settings.theme==='ivory'?'selected':''}>Ivory</option><option value="dark" ${db.settings.theme==='dark'?'selected':''}>Dark</option><option value="sage" ${db.settings.theme==='sage'?'selected':''}>Sage</option><option value="slate" ${db.settings.theme==='slate'?'selected':''}>Slate</option><option value="sand" ${db.settings.theme==='sand'?'selected':''}>Sand</option></select></div><div class="card" style="margin-top:10px"><h3>Backup & Restore</h3><div class="small" style="margin-bottom:12px">Backup your Sales Tracker data before upgrading or moving to another device.</div><div class="small" style="margin-bottom:12px">Includes clients, cases, existing policies, contests, income-related data, coverage analysis, Vital Behaviour Tracker, settings and app preferences.</div><div class="actions"><button class="primary" onclick="backupData()">↓ Backup Data</button><button class="secondary" onclick="document.getElementById('restoreBackupInput').click()">↑ Restore Data</button></div><input id="restoreBackupInput" type="file" accept="application/json,.json" style="display:none" onchange="restoreBackup(event)"></div><div class="card" style="margin-top:10px"><h3>Data</h3><button class="danger" onclick="resetData()">Reset All Data</button></div>`
 }
 function addSetting(k,label){let v=prompt(label);if(v){db.settings[k].push(v);save()}}
 function removeSetting(k,i){if(confirm('Remove this option?')){db.settings[k].splice(i,1);save()}}
+function backupData(){
+ try{
+  const storage={};
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k && k.startsWith('salesTracker')) storage[k]=localStorage.getItem(k)}
+  storage[KEY]=JSON.stringify(db);
+  const payload={app:'Sales Tracker',backupVersion:1,appVersion:'1.13.5',createdAt:new Date().toISOString(),counts:{clients:db.clients.length,cases:db.cases.length,contests:db.contests.length,coverageAnalyses:(db.coverageAnalyses||[]).length,behaviourLogs:(db.behaviourTracker?.logs||[]).length},localStorage:storage};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='Sales_Tracker_Backup_'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast('Backup created successfully');
+ }catch(err){console.error(err);alert('Backup failed. Please try again.')}
+}
+function restoreBackup(event){
+ const file=event.target.files?.[0];event.target.value='';if(!file)return;
+ const reader=new FileReader();
+ reader.onload=()=>{
+  try{
+   const payload=JSON.parse(reader.result);
+   if(payload?.app!=='Sales Tracker' || !payload?.localStorage || typeof payload.localStorage!== 'object') throw new Error('Invalid Sales Tracker backup');
+   const incoming=payload.localStorage;
+   const rawDb=incoming[KEY];
+   if(!rawDb) throw new Error('Backup does not contain app data');
+   const restored=JSON.parse(rawDb);
+   const counts=payload.counts||{};
+   const summary=`${counts.clients||restored.clients?.length||0} clients · ${counts.cases||restored.cases?.length||0} cases · ${counts.contests||restored.contests?.length||0} contests`;
+   if(!confirm(`Restore this backup?\n\n${summary}\nBackup date: ${payload.createdAt?new Date(payload.createdAt).toLocaleString('en-MY'):'Unknown'}\n\nCurrent app data will be replaced by this backup.`)) return;
+   Object.keys(localStorage).filter(k=>k.startsWith('salesTracker')).forEach(k=>localStorage.removeItem(k));
+   Object.entries(incoming).forEach(([k,v])=>{if(k.startsWith('salesTracker')) localStorage.setItem(k,String(v))});
+   localStorage.setItem(KEY,JSON.stringify(restored));
+   alert('Restore successful. Sales Tracker will reload now.');
+   location.reload();
+  }catch(err){console.error(err);alert('Restore failed: Invalid or corrupted backup file.')}
+ };
+ reader.onerror=()=>alert('Restore failed: unable to read the selected file.');
+ reader.readAsText(file);
+}
 function resetData(){if(confirm('Reset all sales, client and contest data? This cannot be undone.')){db.cases=[];db.clients=[];db.contests=[];save()}}
 
 render();
