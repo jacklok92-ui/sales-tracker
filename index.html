@@ -199,7 +199,25 @@ function saveCaseForm(e,mode,reduceId){e.preventDefault();let fd=new FormData(e.
  if(mode==='reduce'&&reduceId){let old=db.cases.find(c=>c.id===reduceId);o.commissionStart=old.commissionStart||old.inforce;o.parentId=old.parentId||''}
  if(reduceId){let i=db.cases.findIndex(c=>c.id===reduceId),old=db.cases[i];if(old){const oldStatus=normalizeStatus(old.status),newStatus=normalizeStatus(o.status);if(oldStatus!==newStatus){behaviourRecordTransition(oldStatus,newStatus,{...old,...o},behaviourDate(new Date()));}db.cases[i]={...old,...o};}}
  else {db.cases.push(o);if(normalizeStatus(o.status)!=='To Approach'){behaviourRecordTransition('To Approach',o.status,o,behaviourDate(new Date()));}}
- localStorage.setItem(KEY,JSON.stringify(db));closeModal();render();toast('Case saved · Behaviour updated')
+ localStorage.setItem(KEY,JSON.stringify(db));closeModal();
+function backupData(){
+ const payload={schema:'sales-tracker-backup',version:'1.0',appVersion:'V1.13.2',exportedAt:new Date().toISOString(),data:db};
+ const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`sales-tracker-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast('Backup downloaded');
+}
+function restoreData(){
+ const input=document.createElement('input');input.type='file';input.accept='.json,application/json';
+ input.onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const raw=JSON.parse(await file.text());const incoming=raw?.data||raw;if(!incoming||!Array.isArray(incoming.cases)||!Array.isArray(incoming.clients))throw new Error('Invalid backup');if(!confirm(`Restore backup?\n\nCases: ${incoming.cases.length}\nClients: ${incoming.clients.length}\n\nCurrent data will be replaced.`))return;db=incoming;db.cases=db.cases||[];db.clients=db.clients||[];db.contests=db.contests||[];db.settings={...structuredClone(defaults),...(db.settings||{})};localStorage.setItem(KEY,JSON.stringify(db));render();toast('Backup restored successfully');}catch(err){alert('Unable to restore this file. Please select a Sales Tracker JSON backup.');}};input.click();
+}
+function backupRestorePanel(){return `<div class="card"><div class="section">Data Backup & Restore</div><div class="small" style="margin-bottom:12px">Backup all your cases, clients, contests, settings and behaviour data into one file. Restore it on another device or after an app upgrade.</div><div class="actions"><button class="primary" onclick="backupData()">↓ Backup Data</button><button onclick="restoreData()">↑ Restore Data</button></div><div class="small" style="margin-top:10px">Tip: make a backup before installing a new version.</div></div>`}
+
+(function(){
+ const oldRender=window.render;
+ if(typeof oldRender==='function'){
+   window.render=function(){oldRender();const el=document.getElementById('settings');if(el && !el.dataset.backupInjected){el.insertAdjacentHTML('beforeend',backupRestorePanel());el.dataset.backupInjected='1';}}
+ }
+})();
+render();toast('Case saved · Behaviour updated')
 }
 
 function behaviourDate(d){let x=new Date(d);return `${x.getFullYear()}-${pad2(x.getMonth()+1)}-${pad2(x.getDate())}`}
