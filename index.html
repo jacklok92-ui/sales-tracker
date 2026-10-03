@@ -1351,21 +1351,34 @@ function bindSettingTouch(){
  });
 }
 
-function backupData(){
+async function backupData(){
  try{
   const storage={};
   for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k && k.startsWith('salesTracker')) storage[k]=localStorage.getItem(k)}
   storage[KEY]=JSON.stringify(db);
-  const payload={app:'Sales Tracker',backupVersion:1,appVersion:'1.14.7',createdAt:new Date().toISOString(),counts:{clients:db.clients.length,cases:db.cases.length,contests:db.contests.length,coverageAnalyses:(db.coverageAnalyses||[]).length,behaviourLogs:(db.behaviourTracker?.logs||[]).length},localStorage:storage};
+  let cloudSnapshot=null;
+  if(window.cloudReady && window.cloudExportSnapshot){
+   cloudSnapshot=await window.cloudExportSnapshot();
+  }
+  const payload={
+   app:'Sales Tracker',
+   backupVersion:2,
+   appVersion:'2.1',
+   createdAt:new Date().toISOString(),
+   includes:['clients','policies','contests','coverage_analyses','settings','behaviourTracker','language','localStorage'],
+   counts:{clients:db.clients.length,cases:db.cases.length,contests:db.contests.length,coverageAnalyses:(db.coverageAnalyses||[]).length,behaviourLogs:(db.behaviourTracker?.logs||[]).length},
+   localStorage:storage,
+   cloud:cloudSnapshot
+  };
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='Sales_Tracker_Backup_'+iso(new Date())+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast('Backup created successfully');
+  toast(cloudSnapshot?'Full backup created successfully':'Local backup created successfully');
  }catch(err){console.error(err);alert('Backup failed. Please try again.')}
 }
 function restoreBackup(event){
  const file=event.target.files?.[0];event.target.value='';if(!file)return;
  const reader=new FileReader();
- reader.onload=()=>{
+ reader.onload=async()=>{
   try{
    const payload=JSON.parse(reader.result);
    if(payload?.app!=='Sales Tracker' || !payload?.localStorage || typeof payload.localStorage!== 'object') throw new Error('Invalid Sales Tracker backup');
@@ -1375,18 +1388,33 @@ function restoreBackup(event){
    const restored=JSON.parse(rawDb);
    const counts=payload.counts||{};
    const summary=`${counts.clients||restored.clients?.length||0} clients · ${counts.cases||restored.cases?.length||0} cases · ${counts.contests||restored.contests?.length||0} contests`;
-   if(!confirm(`Restore this backup?\n\n${summary}\nBackup date: ${payload.createdAt?new Date(payload.createdAt).toLocaleString('en-MY'):'Unknown'}\n\nCurrent app data will be replaced by this backup.`)) return;
+   const scope=payload.cloud?'Cloud data + settings + local preferences':'App data + local preferences';
+   if(!confirm(`Restore this backup?\n\n${summary}\nIncludes: ${scope}\nBackup date: ${payload.createdAt?new Date(payload.createdAt).toLocaleString('en-MY'):'Unknown'}\n\nCurrent app data will be replaced by this backup.`)) return;
+   if(payload.cloud && window.cloudReady && window.cloudRestoreSnapshot){
+    await window.cloudRestoreSnapshot(payload.cloud);
+   }
    Object.keys(localStorage).filter(k=>k.startsWith('salesTracker')).forEach(k=>localStorage.removeItem(k));
    Object.entries(incoming).forEach(([k,v])=>{if(k.startsWith('salesTracker')) localStorage.setItem(k,String(v))});
    localStorage.setItem(KEY,JSON.stringify(restored));
-   alert('Restore successful. Sales Tracker will reload now.');
+   alert(payload.cloud?'Full restore successful. Sales Tracker will reload now.':'Restore successful. Sales Tracker will reload now.');
    location.reload();
-  }catch(err){console.error(err);alert('Restore failed: Invalid or corrupted backup file.')}
+  }catch(err){console.error(err);alert('Restore failed: '+(err?.message||'Invalid or corrupted backup file.'))}
  };
  reader.onerror=()=>alert('Restore failed: unable to read the selected file.');
  reader.readAsText(file);
 }
-function resetData(){if(confirm('Reset ALL Sales Tracker data?\n\nThis will clear Cases, Clients, Contests, Coverage Analysis and Vital Behaviour history. This cannot be undone.')){db.cases=[];db.clients=[];db.contests=[];db.coverageAnalyses=[];db.behaviourTracker={targets:{},logs:[]};Object.keys(localStorage).filter(k=>k.startsWith('salesTrackerSalesCfg')).forEach(k=>localStorage.removeItem(k));save();toast('All data has been reset')}}
+async function resetData(){
+ if(!confirm('Reset ALL Sales Tracker data?\n\nThis will permanently clear ALL Cases, Clients, Imported Portfolio, Contests, Coverage Analyses, Behaviour Tracker, custom Products/Groups/Benefits/Rates, theme, language and other app settings from this account.\n\nYour login account will remain. This cannot be undone.')) return;
+ try{
+  if(window.cloudReady && window.cloudResetAll){await window.cloudResetAll();}
+  db={cases:[],clients:[],contests:[],coverageAnalyses:[],behaviourTracker:{targets:{},logs:[]},settings:structuredClone(defaults)};
+  appLang='zh';
+  for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith('salesTracker'))localStorage.removeItem(k)}
+  localStorage.setItem(KEY,JSON.stringify(db));
+  render();
+  toast('All data and settings have been reset');
+ }catch(err){console.error(err);alert('Reset failed: '+(err?.message||'Please try again.'))}
+}
 
 render();
 </script>
@@ -1494,6 +1522,55 @@ render();
     ].map(x=>({user_id:cloudUser.id,setting_key:x.key,setting_value:x.value,updated_at:new Date().toISOString()}));
     const {error}=await sb.from('app_settings').upsert(payload,{onConflict:'user_id,setting_key'});if(error)throw error;
   }
+  async function cloudExportSnapshot(){
+    if(!cloudUser) return null;
+    const data=await fetchCloud();
+    return {
+      clients:data.clients||[],
+      policies:data.policies||[],
+      contests:data.contests||[],
+      coverage_analyses:data.coverage||[],
+      app_settings:data.settings||[]
+    };
+  }
+  window.cloudExportSnapshot=cloudExportSnapshot;
+
+  async function cloudResetAll(){
+    if(!cloudUser) return;
+    cloudLoading=true;
+    try{
+      // Delete children before clients because policies reference clients.
+      for(const table of ['policies','coverage_analyses','contests','clients','app_settings']){
+        const {error}=await sb.from(table).delete().eq('user_id',cloudUser.id);
+        if(error)throw error;
+      }
+      if(cloudChannel){sb.removeChannel(cloudChannel);cloudChannel=null;}
+    }finally{cloudLoading=false;}
+  }
+  window.cloudResetAll=cloudResetAll;
+
+  async function cloudRestoreSnapshot(snapshot){
+    if(!cloudUser||!snapshot)return;
+    cloudLoading=true;
+    try{
+      for(const table of ['policies','coverage_analyses','contests','clients','app_settings']){
+        const {error}=await sb.from(table).delete().eq('user_id',cloudUser.id);
+        if(error)throw error;
+      }
+      const clients=(snapshot.clients||[]).map(r=>({...r,user_id:cloudUser.id}));
+      const policies=(snapshot.policies||[]).map(r=>({...r,user_id:cloudUser.id}));
+      const contests=(snapshot.contests||[]).map(r=>({...r,user_id:cloudUser.id}));
+      const coverage=(snapshot.coverage_analyses||[]).map(r=>({...r,user_id:cloudUser.id}));
+      const settings=(snapshot.app_settings||[]).map(r=>({...r,user_id:cloudUser.id}));
+      if(clients.length){const {error}=await sb.from('clients').insert(clients);if(error)throw error;}
+      if(policies.length){const {error}=await sb.from('policies').insert(policies);if(error)throw error;}
+      if(contests.length){const {error}=await sb.from('contests').insert(contests);if(error)throw error;}
+      if(coverage.length){const {error}=await sb.from('coverage_analyses').insert(coverage);if(error)throw error;}
+      if(settings.length){const {error}=await sb.from('app_settings').insert(settings);if(error)throw error;}
+    }finally{cloudLoading=false;}
+  }
+  window.cloudRestoreSnapshot=cloudRestoreSnapshot;
+
   async function cloudUploadAll(){
     if(!cloudUser||cloudLoading)return;
     cloudSyncing=true;cloudSyncStatus('Syncing…','sync');
