@@ -31,6 +31,8 @@ input,select,textarea{width:100%;padding:11px 12px;border:1px solid #dcdad2;bord
 body{background:radial-gradient(circle at 15% 0%,rgba(37,99,235,.08),transparent 30%),radial-gradient(circle at 90% 10%,rgba(124,58,237,.07),transparent 28%),var(--bg);color:var(--text)}
 .app{max-width:1120px;margin:auto}.top{border-bottom:1px solid rgba(223,230,239,.8);backdrop-filter:blur(18px);background:rgba(244,247,251,.82);position:sticky;top:0;z-index:10}.brand{letter-spacing:-.02em}.card{background:rgba(255,255,255,.88);border:1px solid rgba(223,230,239,.9);box-shadow:var(--shadow);border-radius:18px;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.card[role=button],.card[onclick]{cursor:pointer}.card[role=button]:hover,.card[onclick]:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(15,23,42,.12);border-color:rgba(37,99,235,.25)}
 button.primary{background:linear-gradient(135deg,#2563eb,#7c3aed);box-shadow:0 8px 18px rgba(37,99,235,.2)}button.secondary{background:#f8fafc;border-color:#d9e2ec}nav{background:rgba(255,255,255,.72);border:1px solid var(--line);box-shadow:0 6px 20px rgba(15,23,42,.05);border-radius:16px;padding:5px}nav button{border-radius:11px}.metric{letter-spacing:-.04em}.section{font-weight:800;letter-spacing:-.02em}.modal{background:rgba(15,23,42,.48);backdrop-filter:blur(8px)}.modalBox{box-shadow:0 24px 70px rgba(15,23,42,.22);border:1px solid rgba(255,255,255,.6)}.chartCard{box-shadow:var(--shadow)}.svgChart{height:280px}.chartValue{font-size:10px;fill:var(--text);font-weight:750}.aiCoach{background:linear-gradient(135deg,rgba(37,99,235,.08),rgba(124,58,237,.08));border-color:rgba(99,102,241,.22)}.aiBadge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:5px 9px}.coachAction{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.coachAction button{font-size:12px;padding:8px 10px}
+
+.filterBtn{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}.filterBtn:active{transform:scale(.98)}.filterModal{display:flex;flex-direction:column;gap:18px}.filterGroup{padding:12px 0;border-bottom:1px solid var(--line)}.checkGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}.checkRow{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-size:13px;cursor:pointer}.checkRow input{width:17px;height:17px;accent-color:var(--accent)}@media(max-width:640px){.checkGrid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -331,14 +333,57 @@ function makeBarChartV10(points){points=[...points].sort((a,b)=>String(a.label).
 function salesBarBreakdown(label,g){let cfg=salesCfg||{},dates=resolveSalesRangeV10(cfg,new Date()),rows=db.cases.filter(c=>c.inforce&&c.inforce>=dates.from&&c.inforce<=dates.to&&c.kind!=='Reduce').filter(c=>aggregateKey(c.inforce,g)===label),total=rows.reduce((s,c)=>s+tpc(c),0);modal(`${groupLabel(g)} · ${label} Breakdown`,`<div class="small" style="margin-bottom:12px">${rows.length} case${rows.length===1?'':'s'} · ${money(total)}</div><div class="list">${rows.map(c=>`<div class="item"><div class="row"><div><b>${c.client||'-'}</b><div class="small">${c.product||c.type||'-'} · ${c.kind||'New Business'}</div><div class="small">${dateStr(c.inforce)} · ${c.policyNumber||'-'}</div></div><b>${money(tpc(c))}</b></div></div>`).join('')||'<div class="empty">No records.</div>'}</div>`,true)}
 function aggregateKey(date,g){let d=new Date(date+'T00:00:00');if(g==='day')return iso(d);if(g==='week'){let x=new Date(d),day=x.getDay()||7;x.setDate(x.getDate()-day+1);return 'Week of '+iso(x)}if(g==='month')return `${d.getFullYear()}-${pad2(d.getMonth()+1)}`;if(g==='quarter')return `${d.getFullYear()} Q${Math.floor(d.getMonth()/3)+1}`;if(g==='h1')return d.getMonth()<6?`${d.getFullYear()} H1`:'';if(g==='h2')return d.getMonth()>=6?`${d.getFullYear()} H2`:'';return String(d.getFullYear())}
 function makeSalesChart(points){return makeLineChartV10(points)}
+function clientFilterMatches(c,f){
+ let groups=Array.isArray(f.groups)?f.groups:[], statuses=Array.isArray(f.statuses)?f.statuses:[], products=Array.isArray(f.products)?f.products:[];
+ let caseRows=db.cases.filter(x=>(x.ic&&x.ic===c.ic)||(!x.ic&&x.client===c.client));
+ let statusHit=caseRows.some(x=>statuses.includes(normalizeStatus(x.status))) || statuses.includes(normalizeStatus(c.clientStatus||''));
+ let productHit=caseRows.some(x=>products.includes(normalizeProduct(x.product||x.type)));
+ return (!f.name||String(c.client||'').toLowerCase().includes(String(f.name).toLowerCase()))
+   &&(!f.ic||String(c.ic||'').toLowerCase().includes(String(f.ic).toLowerCase()))
+   &&(!groups.length||groups.includes(c.group||''))
+   &&(!statuses.length||statusHit)
+   &&(!products.length||productHit);
+}
 function clients(){
  let f=window.cf||{},all=clientRecords();
- let list=all.filter(c=>(!f.name||String(c.client||'').toLowerCase().includes(String(f.name).toLowerCase()))&&(!f.ic||String(c.ic||'').toLowerCase().includes(String(f.ic).toLowerCase()))&&(!f.group||c.group===f.group)&&(!f.status||c.clientStatus===f.status||db.cases.some(x=>x.ic===c.ic&&normalizeStatus(x.status)===f.status))&&(!f.product||db.cases.some(x=>x.ic===c.ic&&normalizeProduct(x.product||x.type)===f.product)));
+ let list=all.filter(c=>clientFilterMatches(c,f));
  list.sort((a,b)=>String(a.client||'').localeCompare(String(b.client||''),undefined,{sensitivity:'base'}));
+ let focusField=window.clientSearchFocus||'';
+ let focusPos=Number.isFinite(window.clientSearchPos)?window.clientSearchPos:null;
+ window.clientSearchFocus=''; window.clientSearchPos=null;
  document.getElementById('clients').innerHTML=`<div class="row"><div class="section">Clients</div><button class="primary" onclick="importExcel()">＋ Import Excel</button></div>
- <div class="card"><div class="searchGrid"><input placeholder="Client Name" value="${String(f.name||'').replace(/\"/g,'&quot;')}" oninput="window.cf={...(window.cf||{}),name:this.value};render()"><input placeholder="Client IC" value="${String(f.ic||'').replace(/\"/g,'&quot;')}" oninput="window.cf={...(window.cf||{}),ic:this.value};render()"><select onchange="window.cf={...(window.cf||{}),group:this.value};render()"><option value="">All Groups</option>${db.settings.groups.map(g=>`<option ${f.group===g?'selected':''}>${g}</option>`).join('')}</select><select onchange="window.cf={...(window.cf||{}),status:this.value};render()"><option value="">All Status</option>${['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','Surrender','Lapse','Ceased'].map(x=>`<option ${f.status===x?'selected':''}>${x}</option>`).join('')}</select><select onchange="window.cf={...(window.cf||{}),product:this.value};render()"><option value="">All Products</option>${allProducts().sort((a,b)=>a.localeCompare(b)).map(p=>`<option ${f.product===p?'selected':''}>${p}</option>`).join('')}</select></div></div>
- <div class="section">${list.length} Client(s)</div><div class="list">${list.map(c=>{let n=db.cases.filter(x=>x.ic===c.ic).length;return `<div class="item"><button class="linkBtn" onclick="profile('${String(c.ic||'').replace(/'/g,"\\'")}')">${c.client}</button><div class="small">${c.ic||'-'} · Group ${c.group||'-'} · ${n} policy record${n===1?'':'s'}</div></div>`}).join('')||'<div class="empty">No matching clients.</div>'}</div>`
+ <div class="card"><div class="searchGrid">
+ <input id="clientSearchName" placeholder="Client Name" value="${String(f.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}" oninput="window.cf={...(window.cf||{}),name:this.value};window.clientSearchFocus='name';window.clientSearchPos=this.selectionStart;clients()">
+ <input id="clientSearchIC" placeholder="Client IC" value="${String(f.ic||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}" oninput="window.cf={...(window.cf||{}),ic:this.value};window.clientSearchFocus='ic';window.clientSearchPos=this.selectionStart;clients()">
+ <button class="filterBtn" onclick="openClientFilter()">☷ Filter${((f.groups||[]).length+(f.statuses||[]).length+(f.products||[]).length)?` · ${((f.groups||[]).length+(f.statuses||[]).length+(f.products||[]).length)}`:''}</button>
+ </div></div>
+ <div class="section">${list.length} Client(s)</div><div class="list">${list.map(c=>{let n=db.cases.filter(x=>(x.ic&&x.ic===c.ic)||(!x.ic&&x.client===c.client)).length;return `<div class="item"><button class="linkBtn" onclick="profile('${String(c.ic||'').replace(/'/g,"\\'")}')">${c.client}</button><div class="small">${c.ic||'-'} · Group ${c.group||'-'} · ${n} policy record${n===1?'':'s'}</div></div>`}).join('')||'<div class="empty">No matching clients.</div>'}</div>`;
+ if(focusField){
+   let el=document.getElementById(focusField==='name'?'clientSearchName':'clientSearchIC');
+   if(el){el.focus();let pos=focusPos===null?el.value.length:focusPos;try{el.setSelectionRange(pos,pos)}catch(e){}}
+ }
 }
+function openClientFilter(){
+ let f=window.cf||{},groups=Array.isArray(f.groups)?f.groups:[],statuses=Array.isArray(f.statuses)?f.statuses:[],products=Array.isArray(f.products)?f.products:[];
+ let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','Surrender','Lapse','Ceased'];
+ let productOptions=allProducts().sort((a,b)=>a.localeCompare(b));
+ let checks=(name,items,selected)=>items.map((x,i)=>`<label class="checkRow"><input type="checkbox" data-filter="${name}" value="${String(x).replace(/"/g,'&quot;')}" ${selected.includes(x)?'checked':''}><span>${x}</span></label>`).join('');
+ modal('Filter Clients',`<div class="filterModal">
+   <div class="filterGroup"><div class="small"><b>Client Group</b></div><div class="checkGrid">${checks('groups',db.settings.groups,groups)}</div></div>
+   <div class="filterGroup"><div class="small"><b>Status</b></div><div class="checkGrid">${checks('statuses',statusOptions,statuses)}</div></div>
+   <div class="filterGroup"><div class="small"><b>Product</b></div><div class="checkGrid">${checks('products',productOptions,products)}</div></div>
+   <div class="actions"><button class="secondary" onclick="clearClientFilter()">Clear</button><button class="primary" onclick="applyClientFilter()">Apply Filter</button></div>
+ </div>`,true);
+}
+function applyClientFilter(){
+ let next={...(window.cf||{})};
+ ['groups','statuses','products'].forEach(k=>next[k]=[...document.querySelectorAll(`input[data-filter="${k}"]:checked`)].map(x=>x.value));
+ window.cf=next;closeModal();clients();
+}
+function clearClientFilter(){
+ let next={...(window.cf||{})};delete next.groups;delete next.statuses;delete next.products;window.cf=next;closeModal();clients();
+}
+
 let cf={}; window.cf=cf;
 function importExcel(){
  modal('Import Existing Clients',`<div class="stack">
