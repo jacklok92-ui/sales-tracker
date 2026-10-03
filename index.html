@@ -547,7 +547,7 @@ function upsertClient(c){
  if(i>=0) db.clients[i]={...db.clients[i],...c}; else db.clients.push(c);
 }
 
-function save(){localStorage.setItem(KEY,JSON.stringify(db));render()}
+function save(){localStorage.setItem(KEY,JSON.stringify(db));render();if(window.cloudReady)window.cloudScheduleSync?.()}
 function money(n){return 'RM '+Number(n||0).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function dateStr(d){return d?new Date(d+'T00:00:00').toLocaleDateString('en-MY',{day:'2-digit',month:'short',year:'numeric'}):'-'}
 function monthKey(d=new Date()){let x=new Date(d);return `${x.getFullYear()}-${pad2(x.getMonth()+1)}`}
@@ -577,7 +577,7 @@ function toast(t){let e=document.createElement('div');e.className='toast';e.text
 const TXT={zh:{home:'首页',pipeline:'Pipeline',sales:'Sales',clients:'客户',coverage:'保障计算',contest:'竞赛',income:'收入',settings:'设置',newCase:'＋ 新增 Case',coach:'AI Coach',coachTitle:'今日 Coach',ask:'问 Coach',askPlaceholder:'例如：我这个月应该先做什么？',production:'Production Overview · 当月',existing:'Existing Portfolio',activeImported:'Active Imported Policies',estimatedMonthly:'Estimated Monthly Income',ongoing:'Ongoing Contests'},en:{home:'Home',pipeline:'Pipeline',sales:'Sales',clients:'Clients',coverage:'Coverage',contest:'Contest',income:'Income',settings:'Settings',newCase:'＋ New Case',coach:'AI Coach',coachTitle:"Today's Coach",ask:'Ask Coach',askPlaceholder:'e.g. What should I focus on this month?',production:'Production Overview · Current Month',existing:'Existing Portfolio',activeImported:'Active Imported Policies',estimatedMonthly:'Estimated Monthly Income',ongoing:'Ongoing Contests'}};
 function L(k){return (TXT[appLang]||TXT.en)[k]||k}
 function toggleLang(){appLang=appLang==='zh'?'en':'zh';localStorage.setItem('salesTrackerLang',appLang);render()}
-function render(){applyTheme();document.getElementById('brandSub').textContent='Insurance CRM · V1.15.3';document.getElementById('newCaseBtn').textContent=L('newCase');const labels=['home','pipeline','sales','clients','coverage','contest','income','settings'];document.querySelectorAll('#nav button').forEach((b,i)=>b.textContent=L(labels[i]));[['home',home],['pipeline',pipeline],['sales',sales],['clients',clients],['coverage',coverage],['contest',contest],['income',income],['settings',settings]].forEach(([id,fn])=>{try{fn()}catch(err){console.error('Sales Tracker render error in '+id,err);const el=document.getElementById(id);if(el)el.innerHTML='<div class="card"><b>'+id+' failed to load</b><div class="small" style="margin-top:8px">Please refresh the app. Other sections remain available.</div></div>'}})}
+function render(){applyTheme();document.getElementById('brandSub').textContent='Insurance CRM · V2.0 Cloud';document.getElementById('newCaseBtn').textContent=L('newCase');const labels=['home','pipeline','sales','clients','coverage','contest','income','settings'];document.querySelectorAll('#nav button').forEach((b,i)=>b.textContent=L(labels[i]));[['home',home],['pipeline',pipeline],['sales',sales],['clients',clients],['coverage',coverage],['contest',contest],['income',income],['settings',settings]].forEach(([id,fn])=>{try{fn()}catch(err){console.error('Sales Tracker render error in '+id,err);const el=document.getElementById(id);if(el)el.innerHTML='<div class="card"><b>'+id+' failed to load</b><div class="small" style="margin-top:8px">Please refresh the app. Other sections remain available.</div></div>'}})}
 
 function startCase(){modal('New Case',`<div class="menuGrid"><button class="menuBtn" onclick="chooseNB()">New Business<span>New policy / new sale</span></button><button class="menuBtn" onclick="chooseTU()">Top Up<span>Upgrade an existing policy</span></button></div>`)}
 function chooseNB(){modal('New Business',`<div class="menuGrid"><button class="menuBtn" onclick="caseForm('new')">New Client<span>Enter client details</span></button><button class="menuBtn" onclick="existingPicker('new')">Existing Client<span>Select an existing client</span></button></div>`)}
@@ -670,6 +670,7 @@ function saveCaseForm(e,mode,reduceId){
    if(newStatus!=='To Approach'){try{behaviourRecordTransition('To Approach',newStatus,o,behaviourDate(new Date()));}catch(err){console.error('Vital Behaviour record failed',err);}}
  }
  localStorage.setItem(KEY,JSON.stringify(db));
+ if(window.cloudReady)window.cloudScheduleSync?.();
  closeModal();
  render();
  toast(oldStatus!==newStatus?`Status updated · ${newStatus}`:'Case saved');
@@ -1388,5 +1389,234 @@ function restoreBackup(event){
 function resetData(){if(confirm('Reset ALL Sales Tracker data?\n\nThis will clear Cases, Clients, Contests, Coverage Analysis and Vital Behaviour history. This cannot be undone.')){db.cases=[];db.clients=[];db.contests=[];db.coverageAnalyses=[];db.behaviourTracker={targets:{},logs:[]};Object.keys(localStorage).filter(k=>k.startsWith('salesTrackerSalesCfg')).forEach(k=>localStorage.removeItem(k));save();toast('All data has been reset')}}
 
 render();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style id="v20-cloud-ui">
+#cloudGate{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;background:radial-gradient(circle at 15% 0%,rgba(90,180,255,.18),transparent 32%),radial-gradient(circle at 90% 10%,rgba(139,108,255,.18),transparent 34%),linear-gradient(180deg,#f7f9fc,#edf2f7);color:#17191d}
+#cloudGate.show{display:flex}body.cloudLocked .app{visibility:hidden}body.cloudLocked{overflow:hidden}
+.cloudBox{width:min(430px,100%);padding:26px;border-radius:28px;background:rgba(255,255,255,.78);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.9);box-shadow:0 25px 80px rgba(35,52,78,.18)}
+.cloudBrand{font-size:28px;font-weight:850;letter-spacing:-.05em}.cloudSub{margin-top:7px;color:#6b7280;font-size:13px;line-height:1.5}.cloudBadge{display:inline-flex;margin-bottom:14px;padding:6px 9px;border-radius:999px;background:#eaf6ff;color:#1671c9;font-size:11px;font-weight:800}.cloudBox input{margin-top:14px;background:rgba(255,255,255,.9);border:1px solid #d8e0ea;color:#111827}.cloudBox button{width:100%;margin-top:12px}.cloudOtp{display:none}.cloudOtp.show{display:block}.cloudStatus{min-height:20px;margin-top:12px;font-size:12px;color:#667085}.cloudStatus.error{color:#c43d50}.cloudStatus.ok{color:#18794e}.cloudTiny{font-size:11px;color:#8a93a0;margin-top:14px;line-height:1.5}.cloudSyncDot{position:fixed;right:14px;bottom:18px;z-index:70;display:none;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:rgba(17,24,39,.9);color:#fff;font-size:11px;box-shadow:0 10px 30px rgba(0,0,0,.18)}.cloudSyncDot.show{display:flex}.cloudSyncDot i{width:7px;height:7px;border-radius:50%;background:#22c55e;display:block}.cloudSyncDot.sync i{background:#60a5fa;box-shadow:0 0 12px #60a5fa}.cloudSyncDot.off i{background:#f59e0b}
+</style>
+<div id="cloudGate" class="show">
+  <div class="cloudBox">
+    <div class="cloudBadge">☁ CLOUD SYNC · V2.0</div>
+    <div class="cloudBrand">Sales Tracker</div>
+    <div class="cloudSub">Sign in once, then use the same data on your iPhone and iPad.</div>
+    <input id="cloudEmail" type="email" autocomplete="email" placeholder="Your email address">
+    <button id="cloudSend" class="primary" type="button" onclick="cloudSendOtp()">Continue with Email</button>
+    <div id="cloudOtpWrap" class="cloudOtp">
+      <input id="cloudOtp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="Enter the code from your email">
+      <button class="primary" type="button" onclick="cloudVerifyOtp()">Verify & Continue</button>
+    </div>
+    <div id="cloudStatus" class="cloudStatus"></div>
+    <div class="cloudTiny">Your Sales Tracker data is stored in your private cloud account. The same account can be used on iPhone and iPad.</div>
+  </div>
+</div>
+<div id="cloudSyncDot" class="cloudSyncDot"><i></i><span>Cloud synced</span></div>
+<script>
+(() => {
+  const SUPABASE_URL = 'https://bkfwchbqftmogjsxbnrp.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_nbpxtf3z3iR4Zq_FxyXf2g_p4muDwpP';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+  window.salesTrackerSupabase = sb;
+  window.cloudReady = false;
+  let cloudUser = null;
+  let cloudSyncing = false;
+  let cloudTimer = null;
+  let cloudChannel = null;
+  let cloudLoading = false;
+
+  const gate = document.getElementById('cloudGate');
+  const statusEl = document.getElementById('cloudStatus');
+  const otpWrap = document.getElementById('cloudOtpWrap');
+  const syncDot = document.getElementById('cloudSyncDot');
+  document.body.classList.add('cloudLocked');
+
+  function cloudStatus(msg, type='') {
+    statusEl.textContent = msg || '';
+    statusEl.className = 'cloudStatus'+(type?' '+type:'');
+  }
+  function cloudSyncStatus(label, mode='') {
+    const s = syncDot.querySelector('span');
+    s.textContent = label;
+    syncDot.className = 'cloudSyncDot show '+mode;
+    clearTimeout(cloudSyncStatus.timer);
+    if(mode!=='sync') cloudSyncStatus.timer=setTimeout(()=>syncDot.classList.remove('show'),2200);
+  }
+  function uuid(){return crypto.randomUUID();}
+  function ensureCloudId(obj){if(!obj._cloudId)obj._cloudId=uuid();return obj._cloudId;}
+  function json(v){return v===undefined||v===null?'':String(v)}
+  function num(v){const n=Number(v);return Number.isFinite(n)?n:0}
+  function caseToPolicy(c, clientMap) {
+    const cid=clientMap.get(String(c.ic||'').trim().toLowerCase()) || clientMap.get(String(c.client||'').trim().toLowerCase()) || null;
+    return {
+      id:ensureCloudId(c), user_id:cloudUser.id, client_id:cid,
+      policy_number:json(c.policyNumber||''), kind:json(c.kind||'New Business'), product:normalizeProduct(c.product||c.type||''),
+      benefit:coverageBenefitObject(c.benefit), inforce_date:c.inforce||null, status:normalizeStatus(c.status||''),
+      payment_mode:json(c.payMode||''), premium:num(c.premium), payment_term:c.term?num(c.term):null, tpc:num(c.tpc),
+      source:'sales-tracker-v1', source_reference:json(c.id||''), parent_policy_id:null, notes:json(c.notes||'')
+    };
+  }
+  function clientRows(){
+    const map=new Map();
+    (db.clients||[]).forEach(c=>{const key=String(c.ic||c.client||'').trim().toLowerCase();if(key)map.set(key,c)});
+    (db.cases||[]).forEach(c=>{const key=String(c.ic||c.client||'').trim().toLowerCase();if(key&&!map.has(key))map.set(key,{client:c.client,ic:c.ic,group:c.group||'',clientStatus:c.clientStatus||''})});
+    return [...map.values()];
+  }
+  async function upsertClients(){
+    const rows=clientRows(); const map=new Map();
+    rows.forEach(c=>{ensureCloudId(c);const key=String(c.ic||c.client||'').trim().toLowerCase();if(key)map.set(key,c._cloudId)});
+    if(!rows.length)return map;
+    const payload=rows.map(c=>({id:c._cloudId,user_id:cloudUser.id,name:json(c.client),ic:json(c.ic)||null,client_group:json(c.group),spouse_income:num(c.spouseIncome||c.spouse_income),monthly_income:num(c.monthlyIncome||c.monthly_income),children:c.children===''||c.children==null?0:num(c.children),youngest_child_age:c.youngestChildAge===''||c.youngestChildAge==null?null:num(c.youngestChildAge),notes:json(c.notes),updated_at:new Date().toISOString()}));
+    const {error}=await sb.from('clients').upsert(payload,{onConflict:'id'}); if(error)throw error;
+    return map;
+  }
+  async function upsertPolicies(clientMap){
+    const rows=(db.cases||[]).map(c=>caseToPolicy(c,clientMap));
+    const localToCloud=new Map(rows.map((r,i)=>[String(db.cases[i].id),r.id]));
+    rows.forEach(r=>{const local=db.cases.find(c=>String(c._cloudId)===String(r.id)); if(local?.parentId) r.parent_policy_id=localToCloud.get(String(local.parentId))||null;});
+    if(!rows.length)return;
+    const {error}=await sb.from('policies').upsert(rows,{onConflict:'id'}); if(error)throw error;
+  }
+  async function upsertContests(){
+    const rows=(db.contests||[]).map(c=>{ensureCloudId(c);return{id:c._cloudId,user_id:cloudUser.id,name:json(c.name||''),start_date:c.start||null,end_date:c.end||null,metric:json(c.metric||'TPC'),product_restriction:c.type? [normalizeProduct(c.type)]:[],target:num(c.target),updated_at:new Date().toISOString()}});
+    if(!rows.length)return; const {error}=await sb.from('contests').upsert(rows,{onConflict:'id'});if(error)throw error;
+  }
+  async function upsertCoverage(){
+    const rows=(db.coverageAnalyses||[]).map(x=>{ensureCloudId(x);return{id:x._cloudId,user_id:cloudUser.id,client_id:null,client_name:json(x.clientName||x.client||''),client_ic:json(x.clientIc||x.ic||''),monthly_income:num(x.monthlyIncome),spouse_income:num(x.spouseIncome),children:num(x.children),youngest_child_age:x.youngestChildAge==null?null:num(x.youngestChildAge),savings:num(x.savings),mortgage:num(x.mortgage),loans:num(x.loans),education:num(x.education),existing_life:num(x.existingLife||x.life),existing_ci:num(x.existingCI||x.ci),existing_accidental_death:num(x.existingAccidentalDeath||x.accidentalDeath),existing_accidental_medical:num(x.existingAccidentalMedical||x.accidentalMedical),life_income_years:num(x.lifeIncomeYears||x.lifeYears||10),ci_income_years:num(x.ciIncomeYears||x.ciYears||3),life_need:num(x.lifeNeed),life_gap:num(x.lifeGap),ci_need:num(x.ciNeed),ci_gap:num(x.ciGap),emergency_target:num(x.emergencyTarget),emergency_gap:num(x.emergencyGap),savings_runway:num(x.savingsRunway),calculation:x||{},updated_at:new Date().toISOString()}});
+    if(!rows.length)return; const {error}=await sb.from('coverage_analyses').upsert(rows,{onConflict:'id'});if(error)throw error;
+  }
+  async function upsertSettings(){
+    const payload=[
+      {key:'settings',value:db.settings||{}},
+      {key:'behaviourTracker',value:db.behaviourTracker||{targets:{},logs:[]}},
+      {key:'language',value:{lang:appLang||'zh'}}
+    ].map(x=>({user_id:cloudUser.id,setting_key:x.key,setting_value:x.value,updated_at:new Date().toISOString()}));
+    const {error}=await sb.from('app_settings').upsert(payload,{onConflict:'user_id,setting_key'});if(error)throw error;
+  }
+  async function cloudUploadAll(){
+    if(!cloudUser||cloudLoading)return;
+    cloudSyncing=true;cloudSyncStatus('Syncing…','sync');
+    try{
+      const clientMap=await upsertClients();
+      await upsertPolicies(clientMap);
+      await upsertContests();
+      await upsertCoverage();
+      await upsertSettings();
+      localStorage.setItem(KEY,JSON.stringify(db));
+      cloudSyncStatus('Synced','');
+    }catch(e){console.error('Cloud sync upload failed',e);cloudSyncStatus('Sync failed','off');}
+    finally{cloudSyncing=false;}
+  }
+  window.cloudScheduleSync=function(){
+    if(!window.cloudReady||cloudLoading)return;
+    clearTimeout(cloudTimer); cloudTimer=setTimeout(()=>cloudUploadAll(),650);
+  };
+  async function fetchCloud(){
+    const [clientsR,policiesR,contestsR,covR,settingsR]=await Promise.all([
+      sb.from('clients').select('*').order('name'),
+      sb.from('policies').select('*').order('inforce_date',{ascending:true,nullsFirst:false}),
+      sb.from('contests').select('*').order('start_date',{ascending:false}),
+      sb.from('coverage_analyses').select('*').order('created_at',{ascending:false}),
+      sb.from('app_settings').select('*')
+    ]);
+    for(const r of [clientsR,policiesR,contestsR,covR,settingsR])if(r.error)throw r.error;
+    return {clients:clientsR.data||[],policies:policiesR.data||[],contests:contestsR.data||[],coverage:covR.data||[],settings:settingsR.data||[]};
+  }
+  function cloudToLocal(data){
+    const clients=(data.clients||[]).map(r=>({_cloudId:r.id,client:r.name||'',ic:r.ic||'',group:r.client_group||'',spouseIncome:num(r.spouse_income),monthlyIncome:num(r.monthly_income),children:num(r.children),youngestChildAge:r.youngest_child_age==null?'':num(r.youngest_child_age),notes:r.notes||''}));
+    const clientById=new Map(clients.map(c=>[c._cloudId,c]));
+    const policies=(data.policies||[]).map(r=>{const c=clientById.get(r.client_id);return{_cloudId:r.id,id:r.source_reference||r.id,client:c?.client||'',ic:c?.ic||'',group:c?.group||'',policyNumber:r.policy_number||'',kind:r.kind||'Existing Policy',product:normalizeProduct(r.product||''),benefit:typeof r.benefit==='string'?r.benefit:JSON.stringify(r.benefit||{}),inforce:r.inforce_date||'',status:normalizeStatus(r.status||''),payMode:r.payment_mode||'',premium:num(r.premium),term:r.payment_term==null?'':String(r.payment_term),tpc:num(r.tpc),commissionStart:r.inforce_date||'',parentId:'',notes:r.notes||''}});
+    const byCloudId=new Map(policies.map(p=>[p._cloudId,p]));
+    (data.policies||[]).forEach(r=>{const p=byCloudId.get(r.id);if(p&&r.parent_policy_id){const parent=byCloudId.get(r.parent_policy_id);if(parent)p.parentId=String(parent.id)}});
+    const contests=(data.contests||[]).map(r=>({_cloudId:r.id,name:r.name||'',start:r.start_date||'',end:r.end_date||'',metric:r.metric||'TPC',type:Array.isArray(r.product_restriction)&&r.product_restriction.length?normalizeProduct(r.product_restriction[0]):'Any',target:num(r.target)}));
+    const coverage=(data.coverage||[]).map(r=>{const x=r.calculation&&typeof r.calculation==='object'?{...r.calculation}:{ };x._cloudId=r.id;x.id=r.id;x.createdAt=r.created_at?new Date(r.created_at).getTime():Date.now();x.clientName=r.client_name||x.clientName||'';x.clientIc=r.client_ic||x.clientIc||'';x.monthlyIncome=num(r.monthly_income);x.spouseIncome=num(r.spouse_income);x.children=num(r.children);x.youngestChildAge=r.youngest_child_age;x.savings=num(r.savings);return x;});
+    const settingsRow=(data.settings||[]).find(x=>x.setting_key==='settings');
+    const behaviourRow=(data.settings||[]).find(x=>x.setting_key==='behaviourTracker');
+    const langRow=(data.settings||[]).find(x=>x.setting_key==='language');
+    db.clients=clients;db.cases=policies;db.contests=contests;db.coverageAnalyses=coverage;
+    if(settingsRow?.setting_value)db.settings={...structuredClone(defaults),...settingsRow.setting_value};
+    if(behaviourRow?.setting_value)db.behaviourTracker=behaviourRow.setting_value;
+    if(langRow?.setting_value?.lang){appLang=langRow.setting_value.lang;localStorage.setItem('salesTrackerLang',appLang)}
+    db.cases.forEach(c=>{c.status=normalizeStatus(c.status);c.product=normalizeProduct(c.product)});
+    localStorage.setItem(KEY,JSON.stringify(db));
+  }
+  async function counts(){
+    const tables=['clients','policies','contests','coverage_analyses']; let total=0;
+    for(const table of tables){const {count,error}=await sb.from(table).select('*',{count:'exact',head:true});if(error)throw error;total+=count||0;}
+    return total;
+  }
+  async function migrateIfNeeded(){
+    const cloudCount=await counts();
+    const localCount=(db.clients?.length||0)+(db.cases?.length||0)+(db.contests?.length||0)+(db.coverageAnalyses?.length||0);
+    if(cloudCount===0&&localCount>0){
+      cloudStatus('First-time setup: uploading this device data…');
+      await cloudUploadAll();
+      return;
+    }
+    if(cloudCount>0){
+      cloudStatus('Loading your cloud data…');
+      await fetchAndApply();
+      return;
+    }
+  }
+  async function fetchAndApply(){
+    cloudLoading=true;
+    try{const data=await fetchCloud();cloudToLocal(data);render();}
+    finally{cloudLoading=false;}
+  }
+  function setupRealtime(){
+    if(cloudChannel)sb.removeChannel(cloudChannel);
+    cloudChannel=sb.channel('sales-tracker-sync')
+      .on('postgres_changes',{event:'*',schema:'public',table:'clients',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
+      .on('postgres_changes',{event:'*',schema:'public',table:'policies',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
+      .on('postgres_changes',{event:'*',schema:'public',table:'contests',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
+      .on('postgres_changes',{event:'*',schema:'public',table:'coverage_analyses',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
+      .on('postgres_changes',{event:'*',schema:'public',table:'app_settings',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
+      .subscribe();
+  }
+  let rtTimer=null;
+  function cloudRealtimeChanged(){
+    if(cloudSyncing||cloudLoading)return;
+    clearTimeout(rtTimer);rtTimer=setTimeout(async()=>{try{await fetchAndApply();cloudSyncStatus('Synced','')}catch(e){console.error(e)}},500);
+  }
+  async function afterLogin(session){
+    cloudUser=session.user; window.cloudReady=true;
+    try{
+      const {error}=await sb.from('profiles').upsert({id:cloudUser.id,email:cloudUser.email||'',display_name:cloudUser.user_metadata?.name||cloudUser.email||'',updated_at:new Date().toISOString()},{onConflict:'id'});
+      if(error)throw error;
+      await migrateIfNeeded();
+      setupRealtime();
+      gate.classList.remove('show');document.body.classList.remove('cloudLocked');
+      cloudStatus('');
+      render();
+      cloudSyncStatus('Cloud synced','');
+    }catch(e){console.error(e);window.cloudReady=false;cloudStatus(e.message||'Cloud setup failed','error');}
+  }
+  window.cloudSendOtp=async function(){
+    const email=document.getElementById('cloudEmail').value.trim();
+    if(!email){cloudStatus('Please enter your email.','error');return;}
+    cloudStatus('Sending verification email…');
+    const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
+    if(error){cloudStatus(error.message,'error');return;}
+    document.getElementById('cloudOtpWrap').classList.add('show');
+    cloudStatus('Check your email. Enter the 6-digit code here, or use the secure link in the email.','ok');
+  };
+  window.cloudVerifyOtp=async function(){
+    const email=document.getElementById('cloudEmail').value.trim();
+    const token=document.getElementById('cloudOtp').value.trim();
+    if(!email||!token){cloudStatus('Enter your email and the code.','error');return;}
+    cloudStatus('Verifying…');
+    const {data,error}=await sb.auth.verifyOtp({email,token,type:'email'});
+    if(error){cloudStatus(error.message,'error');return;}
+    await afterLogin(data.session);
+  };
+  sb.auth.onAuthStateChange(async(event,session)=>{
+    if(session&&['SIGNED_IN','INITIAL_SESSION','TOKEN_REFRESHED'].includes(event)){
+      if(!cloudUser||cloudUser.id!==session.user.id)await afterLogin(session);
+    }
+  });
+  sb.auth.getSession().then(async({data})=>{if(data.session)await afterLogin(data.session);else{gate.classList.add('show');document.body.classList.add('cloudLocked');}}).catch(e=>cloudStatus(e.message,'error'));
+})();
 </script>
 </body></html>
