@@ -852,20 +852,56 @@ function makeSalesChart(points){return makeLineChartV10(points)}
 function coverageMoney(v){return money(Math.max(0,Number(v)||0))}
 function coverageNum(id){let v=parseFloat(document.getElementById(id)?.value);return Number.isFinite(v)?Math.max(0,v):0}
 function coverageBenefitObject(raw){
- try{return typeof raw==='string'?JSON.parse(raw||'{}'):(raw||{})}catch(e){return {}}
+ try{
+  if(raw && typeof raw==='object')return raw;
+  let s=String(raw||'').trim();
+  if(!s)return {};
+  if((s[0]==='{'&&s[s.length-1]==='}')||(s[0]==='['&&s[s.length-1]===']')) return JSON.parse(s);
+  return {};
+ }catch(e){return {}}
+}
+function coverageExtractAmount(raw,labels){
+ let s=String(raw||''); if(!s)return 0;
+ let clean=s.replace(/,/g,'').replace(/RM\s*/gi,'');
+ for(const label of labels){
+  const esc=label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  let m=clean.match(new RegExp(esc+'[^0-9]{0,30}([0-9]+(?:\.[0-9]+)?)','i'));
+  if(m)return Number(m[1])||0;
+ }
+ return 0;
+}
+function coverageBenefitData(c){
+ let b=coverageBenefitObject(c.benefit);
+ if(Object.keys(b).length)return b;
+ let raw=String(c.benefit||'');
+ return {
+  b_Death___TPD:coverageExtractAmount(raw,['Death\s*/\s*TPD','Death/TPD']),
+  b_TMCC:coverageExtractAmount(raw,['TMCC','Total Multi Crisis Care']),
+  b_43_CI:coverageExtractAmount(raw,['43\s*CI','43 Critical Illness']),
+  b_Acci_Death___TPD:coverageExtractAmount(raw,['Acci\s*Death\s*/\s*TPD','Acci Guard Plus']),
+  b_Acci_Medical_Reimbursement__per_case_:coverageExtractAmount(raw,['Acci\s*Medical\s*Reimbursement','Acci Med Plus']),
+  med_plan:(raw.match(/(?:Medical Card|Medical Plan|Plan)\s*[:\-]?\s*([^;|,]+)/i)||[])[1]||'',
+  med_limit:coverageExtractAmount(raw,['Annual Medical Limit','Annual Limit']),
+  med_room:coverageExtractAmount(raw,['Room\s*&\s*Board','R&B']),
+  med_deduct:coverageExtractAmount(raw,['Deductible','Med Saver'])
+ };
 }
 function coverageExistingSummary(ic,name){
- let rows=db.cases.filter(c=>((ic&&c.ic===ic)||(!ic&&c.client===name))&&normalizeStatus(c.status)==='Inforce');
- let out={life:0,ci:0,tmcc:0,ci43:0,acciLife:0,acciMed:0,medical:[],policies:rows.length};
+ const norm=v=>String(v||'').trim().toLowerCase();
+ const ni=norm(ic), nn=norm(name);
+ let rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce' && ((ni&&norm(c.ic)===ni)||(nn&&norm(c.client)===nn)));
+ let out={life:0,ci:0,tmcc:0,ci43:0,acciLife:0,acciMed:0,medical:[],policies:rows.length,hasBenefitData:false};
  rows.forEach(c=>{
-  let b=coverageBenefitObject(c.benefit);
-  out.life+=Number(b.b_Death___TPD)||Number(c.coverageLife)||0;
+  let b=coverageBenefitData(c);
+  let life=Number(b.b_Death___TPD)||Number(c.coverageLife)||0;
   let tmcc=Number(b.b_TMCC)||0, ci43=Number(b.b_43_CI)||0;
-  out.tmcc+=tmcc;
-  out.ci43+=ci43;
-  out.ci+=(tmcc+ci43)||Number(c.coverageCI)||0;
-  out.acciLife+=Number(b.b_Acci_Death___TPD)||0;
-  out.acciMed+=Number(b.b_Acci_Medical_Reimbursement__per_case_)||0;
+  let legacyCI=Number(c.coverageCI)||0;
+  let acciLife=Number(b.b_Acci_Death___TPD)||Number(c.coverageAcciLife)||0;
+  let acciMed=Number(b.b_Acci_Medical_Reimbursement__per_case_)||Number(c.coverageAcciMed)||0;
+  out.life+=life;
+  out.tmcc+=tmcc; out.ci43+=ci43; out.ci+=(tmcc+ci43)||legacyCI;
+  out.acciLife+=acciLife; out.acciMed+=acciMed;
+  if(life||tmcc||ci43||legacyCI||acciLife||acciMed||b.med_plan||b.med_limit||b.med_room||b.med_whole||b.med_deduct)out.hasBenefitData=true;
   if(b.med_plan||b.med_limit||b.med_room||b.med_whole||b.med_deduct){
    out.medical.push({product:normalizeProduct(c.product||c.type||'Medical Card'),plan:b.med_plan||'',annual:Number(b.med_limit)||0,whole:Number(b.med_whole)||0,room:Number(b.med_room)||0,deduct:Number(b.med_deduct)||0});
   }
@@ -913,8 +949,11 @@ function renderCoverageExistingSummary(ex){
  if(!ex){el.innerHTML='<div class="small">Select an existing client to load current inforce coverage automatically.</div>';return}
  let cards=[['Life / Death & TPD',ex.life],['Critical Illness',ex.ci],['Accidental Death / TPD',ex.acciLife],['Accidental Medical Reimbursement',ex.acciMed]];
  let medical=ex.medical||[];
- el.innerHTML=`<div class="coverageCurrentGrid">${cards.map(x=>`<div class="currentCoverageItem"><span>${x[0]}</span><b>${coverageMoney(x[1])}</b></div>`).join('')}</div><div class="small" style="margin-top:10px"><b>Critical Illness breakdown:</b> TMCC ${coverageMoney(ex.tmcc)} + 43 CI ${coverageMoney(ex.ci43)} = <b>${coverageMoney(ex.ci)}</b></div>${medical.length?`<div class="currentMedicalList">${medical.map(m=>`<div class="currentMedicalItem"><div><b>${coverageEscape(m.product)}</b><div class="small">${coverageEscape(m.plan||'Medical Card')}</div></div><div class="small">Annual ${coverageMoney(m.annual)}${m.room?' · R&B '+coverageMoney(m.room):''}</div></div>`).join('')}</div>`:'<div class="small" style="margin-top:10px">No medical card details found in active policies.</div>'}<div class="small" style="margin-top:10px">Based on ${ex.policies} Inforce ${ex.policies===1?'policy':'policies'} in Sales Tracker.</div>`;
+ let status=ex.hasBenefitData?'<span class="pill green">Auto-filled</span>':'<span class="pill">Policy found · benefit details missing</span>';
+ let medicalHtml=medical.length?'<div class="currentMedicalList">'+medical.map(m=>`<div class="currentMedicalItem"><div><b>${coverageEscape(m.product)}</b><div class="small">${coverageEscape(m.plan||'Medical Card')}</div></div><div class="small">Annual ${coverageMoney(m.annual)}${m.room?' · R&B '+coverageMoney(m.room):''}</div></div>`).join('')+'</div>':'<div class="small" style="margin-top:10px">'+(ex.hasBenefitData?'No medical card details found in active policies.':'This policy record does not contain coverage amounts. The RAISe import stores policy/product data, but not the Life/CI/medical sum assured. Edit the policy benefits or import a file containing benefit amounts to auto-fill these figures.')+'</div>';
+ el.innerHTML=`<div class="row" style="margin-bottom:8px"><div class="small">${ex.policies} Inforce ${ex.policies===1?'policy':'policies'} found</div>${status}</div><div class="coverageCurrentGrid">${cards.map(x=>`<div class="currentCoverageItem"><span>${x[0]}</span><b>${coverageMoney(x[1])}</b></div>`).join('')}</div><div class="small" style="margin-top:10px"><b>Critical Illness breakdown:</b> TMCC ${coverageMoney(ex.tmcc)} + 43 CI ${coverageMoney(ex.ci43)} = <b>${coverageMoney(ex.ci)}</b></div>${medicalHtml}<div class="small" style="margin-top:10px">Coverage is summed across all matching Inforce policies.</div>`;
 }
+
 function coverageClientOptions(){return clientRecords().map(c=>`<option value="${String(c.ic||c.client).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">${String(c.client||'-').replace(/</g,'&lt;')} · ${c.ic||'No IC'}</option>`).join('')}
 function coverageCalc(){
  let income=coverageNum('cvIncome'),spouse=coverageNum('cvSpouseIncome'),household=coverageNum('cvHousehold'),personal=coverageNum('cvPersonal'),mortgage=coverageNum('cvMortgage'),loans=coverageNum('cvLoans'),savings=coverageNum('cvSavings'),children=coverageNum('cvChildren'),youngest=coverageNum('cvYoungest'),life=coverageNum('cvExistingLife'),ci=coverageNum('cvExistingCI'),lifeYears=coverageNum('cvLifeYears')||10,ciYears=coverageNum('cvCIYears')||3,edu=coverageNum('cvEdu');
