@@ -1,0 +1,13 @@
+{
+  "id": "/",
+  "name": "Sales Tracker",
+  "short_name": "Sales Tracker",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f6f2",
+  "theme_color": "#f7f6f2",
+  "icons": [
+    {"src":"/logo.png","sizes":"1254x1254","type":"image/png","purpose":"any maskable"}
+  ]
+}
