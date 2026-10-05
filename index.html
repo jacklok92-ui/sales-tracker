@@ -656,6 +656,116 @@ img,video,canvas,svg{max-width:100%;}
   }, {passive:false});
 })();
 </script>
+
+<style id="v275-dark-language-fix">
+/* V2.7.5 — complete dark-mode contrast + bilingual UI */
+html.dark-ios, html.dark-ios body,
+html[data-theme="dark"], html[data-theme="dark"] body{
+  --bg:#000;
+  --bg2:#0b0b0d;
+  --card:rgba(28,28,30,.88);
+  --card2:rgba(44,44,46,.72);
+  --text:#f5f5f7;
+  --muted:#98989f;
+  --line:rgba(84,84,88,.55);
+  --accent:#0a84ff;
+  --accent2:#7d6df2;
+  --green:#30d158;
+  --red:#ff453a;
+  --yellow:#ffd60a;
+  --shadow:0 18px 55px rgba(0,0,0,.34);
+}
+html.dark-ios body,
+html[data-theme="dark"] body{
+  color:var(--text)!important;
+  color-scheme:dark!important;
+  background:radial-gradient(circle at 8% -4%,rgba(10,132,255,.15),transparent 25%),radial-gradient(circle at 94% 8%,rgba(125,109,242,.12),transparent 23%),#000!important;
+}
+html.dark-ios .top,html[data-theme="dark"] .top{background:rgba(0,0,0,.78)!important;border-bottom-color:rgba(84,84,88,.45)!important;color:#f5f5f7!important}
+html.dark-ios nav,html[data-theme="dark"] nav{background:rgba(28,28,30,.80)!important;border-color:rgba(84,84,88,.55)!important}
+html.dark-ios nav button,html[data-theme="dark"] nav button{color:#98989d!important}
+html.dark-ios nav button.active,html[data-theme="dark"] nav button.active{background:#f5f5f7!important;color:#111114!important}
+html.dark-ios .brand,html[data-theme="dark"] .brand,
+html.dark-ios .section,html[data-theme="dark"] .section,
+html.dark-ios .metric,html[data-theme="dark"] .metric,
+html.dark-ios h1,html.dark-ios h2,html.dark-ios h3,html.dark-ios h4,html.dark-ios h5,
+html[data-theme="dark"] h1,html[data-theme="dark"] h2,html[data-theme="dark"] h3,html[data-theme="dark"] h4,html[data-theme="dark"] h5,
+html.dark-ios .rowTitle,html[data-theme="dark"] .rowTitle,
+html.dark-ios .pageTitle,html[data-theme="dark"] .pageTitle,
+html.dark-ios .settingsTitle,html[data-theme="dark"] .settingsTitle,
+html.dark-ios .homeSectionHead h3,html[data-theme="dark"] .homeSectionHead h3,
+html.dark-ios .quickAction,html[data-theme="dark"] .quickAction,
+html.dark-ios .leadName,html[data-theme="dark"] .leadName,
+html.dark-ios .profileProductHeader,html[data-theme="dark"] .profileProductHeader{
+  color:#f5f5f7!important;
+}
+html.dark-ios .sub,html[data-theme="dark"] .sub,
+html.dark-ios .small,html[data-theme="dark"] .small,
+html.dark-ios .label,html[data-theme="dark"] .label,
+html.dark-ios .field label,html[data-theme="dark"] .field label,
+html.dark-ios .settingsGroupTitle,html[data-theme="dark"] .settingsGroupTitle,
+html.dark-ios .rowSub,html[data-theme="dark"] .rowSub,
+html.dark-ios .qLabel,html[data-theme="dark"] .qLabel,
+html.dark-ios .leadProduct,html[data-theme="dark"] .leadProduct,
+html.dark-ios .leadTime,html[data-theme="dark"] .leadTime,
+html.dark-ios .portfolioSub,html[data-theme="dark"] .portfolioSub,
+html.dark-ios .portfolioMeta span,html[data-theme="dark"] .portfolioMeta span,
+html.dark-ios .chartLegend,html[data-theme="dark"] .chartLegend,
+html.dark-ios .legend,html[data-theme="dark"] .legend,
+html.dark-ios .coverageMini,html[data-theme="dark"] .coverageMini{
+  color:#98989f!important;
+}
+html.dark-ios .card,html.dark-ios .item,html.dark-ios .menuBtn,html.dark-ios .benefitBox,
+html.dark-ios .chartCard,html.dark-ios .coverageCurrent,html.dark-ios .currentCoverageItem,
+html.dark-ios .currentMedicalList,html.dark-ios .clientDetailCard,html.dark-ios .profileProduct,
+html.dark-ios .benefitSummary,html.dark-ios .selectedClient,html.dark-ios .searchFieldWrap,
+html[data-theme="dark"] .card,html[data-theme="dark"] .item,html[data-theme="dark"] .menuBtn,html[data-theme="dark"] .benefitBox,
+html[data-theme="dark"] .chartCard,html[data-theme="dark"] .coverageCurrent,html[data-theme="dark"] .currentCoverageItem,
+html[data-theme="dark"] .currentMedicalList,html[data-theme="dark"] .clientDetailCard,html[data-theme="dark"] .profileProduct,
+html[data-theme="dark"] .benefitSummary,html[data-theme="dark"] .selectedClient,html[data-theme="dark"] .searchFieldWrap{
+  background:rgba(28,28,30,.84)!important;
+  border-color:rgba(84,84,88,.55)!important;
+  color:#f5f5f7!important;
+  box-shadow:0 10px 30px rgba(0,0,0,.25)!important;
+}
+html.dark-ios .modal,html[data-theme="dark"] .modal{background:rgba(0,0,0,.58)!important}
+html.dark-ios .modalBox,html[data-theme="dark"] .modalBox{
+  background:rgba(28,28,30,.97)!important;
+  color:#f5f5f7!important;
+  border-color:rgba(84,84,88,.65)!important;
+  box-shadow:0 30px 90px rgba(0,0,0,.62)!important;
+}
+html.dark-ios .modalBox .small,html[data-theme="dark"] .modalBox .small{color:#98989f!important}
+html.dark-ios input,html.dark-ios select,html.dark-ios textarea,
+html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{
+  background:#1c1c1e!important;color:#f5f5f7!important;border-color:rgba(84,84,88,.65)!important;
+}
+html.dark-ios input::placeholder,html.dark-ios textarea::placeholder,
+html[data-theme="dark"] input::placeholder,html[data-theme="dark"] textarea::placeholder{color:#636366!important}
+html.dark-ios select option,html[data-theme="dark"] select option{background:#1c1c1e!important;color:#f5f5f7!important}
+html.dark-ios button.secondary,html[data-theme="dark"] button.secondary{background:rgba(44,44,46,.88)!important;color:#f5f5f7!important;border-color:rgba(84,84,88,.65)!important}
+html.dark-ios button.danger,html[data-theme="dark"] button.danger{background:rgba(255,59,48,.12)!important;color:#ff6961!important}
+html.dark-ios .iosList,html[data-theme="dark"] .iosList{background:rgba(28,28,30,.90)!important;border-color:rgba(84,84,88,.55)!important}
+html.dark-ios .iosRow,html[data-theme="dark"] .iosRow{border-color:rgba(84,84,88,.55)!important;color:#f5f5f7!important}
+html.dark-ios .appearanceIOS .appearanceSegment,html[data-theme="dark"] .appearanceIOS .appearanceSegment{background:#2c2c2e!important}
+html.dark-ios .appearanceIOS .appearanceOption,html[data-theme="dark"] .appearanceIOS .appearanceOption{color:#98989d!important}
+html.dark-ios .appearanceIOS .appearanceOption.active,html[data-theme="dark"] .appearanceIOS .appearanceOption.active{background:#636366!important;color:#fff!important}
+html.dark-ios .toast,html[data-theme="dark"] .toast{background:rgba(28,28,30,.96)!important;color:#f5f5f7!important;border-color:rgba(84,84,88,.65)!important}
+html.dark-ios .segScroll button,html[data-theme="dark"] .segScroll button{background:rgba(44,44,46,.82)!important;color:#98989f!important;border-color:rgba(84,84,88,.55)!important}
+html.dark-ios .segScroll button.active,html[data-theme="dark"] .segScroll button.active{background:#f5f5f7!important;color:#111114!important}
+html.dark-ios .filterBtn,html[data-theme="dark"] .filterBtn{background:rgba(44,44,46,.88)!important;color:#f5f5f7!important;border-color:rgba(84,84,88,.55)!important}
+html.dark-ios .checkRow,html[data-theme="dark"] .checkRow{background:rgba(28,28,30,.82)!important;color:#d1d1d6!important;border-color:rgba(84,84,88,.55)!important}
+html.dark-ios .profileProductBody,html[data-theme="dark"] .profileProductBody{background:rgba(0,0,0,.18)!important}
+html.dark-ios .benefitSummary,html[data-theme="dark"] .benefitSummary{background:rgba(28,28,30,.72)!important}
+html.dark-ios .benefitSummaryRow,html[data-theme="dark"] .benefitSummaryRow{border-color:rgba(84,84,88,.55)!important}
+html.dark-ios .homeMonthButton,html[data-theme="dark"] .homeMonthButton{background:rgba(44,44,46,.88)!important;color:#f5f5f7!important;border-color:rgba(84,84,88,.55)!important}
+html.dark-ios .heroTitle,html[data-theme="dark"] .heroTitle{color:#98989f!important}
+html.dark-ios .pipeMini .s,html[data-theme="dark"] .pipeMini .s{color:#98989f!important}
+html.dark-ios .moreItem span,html[data-theme="dark"] .moreItem span{color:#98989f!important}
+html.dark-ios .iosChevron,html[data-theme="dark"] .iosChevron{color:#98989f!important}
+/* Make the language switch accessible on iPhone too. */
+@media(max-width:760px){.topActions .langBtn{display:inline-flex!important;min-width:58px!important;padding:9px 10px!important;font-size:11px!important}.topActions{gap:6px!important}}
+</style>
 </head>
 <body>
 <div class="app">
@@ -2169,4 +2279,136 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
   sb.auth.getSession().then(async({data})=>{if(data.session)await afterLogin(data.session);else{gate.classList.add('show');document.body.classList.add('cloudLocked');}}).catch(e=>cloudStatus(e.message,'error'));
 })();
 </script>
+
+<style id="v274-modal-fit-fix">
+/* V2.7.4 — modal windows fit iPhone/iPad viewport cleanly */
+.modal{
+  width:100vw!important;
+  max-width:100vw!important;
+  box-sizing:border-box!important;
+  overflow-x:hidden!important;
+  padding:16px max(16px,env(safe-area-inset-left)) 16px max(16px,env(safe-area-inset-right))!important;
+}
+.modalBox{
+  width:100%!important;
+  max-width:760px!important;
+  min-width:0!important;
+  box-sizing:border-box!important;
+  margin:16px auto!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+}
+.modalBox h1,.modalBox h2,.modalBox h3,.modalBox h4{
+  min-width:0!important;
+  max-width:100%!important;
+  overflow-wrap:anywhere!important;
+}
+@media(max-width:760px){
+  .modal{
+    padding:12px 16px!important;
+    overflow-y:auto!important;
+  }
+  .modalBox{
+    width:calc(100vw - 32px)!important;
+    max-width:520px!important;
+    max-height:calc(100dvh - 32px)!important;
+    margin:0 auto!important;
+    padding:16px!important;
+    border-radius:22px!important;
+  }
+  .modalBox>.row{
+    width:100%!important;
+    gap:10px!important;
+  }
+  .modalBox>.row h2{
+    flex:1 1 auto!important;
+    min-width:0!important;
+    margin-right:4px!important;
+  }
+  .modalBox>.row button{
+    flex:0 0 auto!important;
+  }
+  .scheduleForm,.scheduleForm>*{
+    min-width:0!important;
+    max-width:100%!important;
+  }
+}
+</style>
+
+<script id="v275-language-runtime">
+(function(){
+  const dict={
+    'Home':'首页','首页':'Home','Pipeline':'管线','管线':'Pipeline','Portfolio':'保单组合','保单组合':'Portfolio','More':'更多','更多':'More',
+    'Sales':'销售','销售':'Sales','Clients':'客户','客户':'Clients','Coverage':'保障分析','保障分析':'Coverage','Contest':'竞赛','竞赛':'Contest','Income':'收入','收入':'Income','Settings':'设置','设置':'Settings',
+    '＋ New Case':'＋ 新增 Case','＋ 新增 Case':'＋ New Case','Close':'关闭','关闭':'Close','Cancel':'取消','取消':'Cancel','Save':'保存','保存':'Save',
+    'New Business':'新业务','新业务':'New Business','New Client':'新客户','新客户':'New Client','Existing Client':'现有客户','现有客户':'Existing Client','Top Up':'加保 / Top Up','加保 / Top Up':'Top Up',
+    'Client Name':'客户姓名','客户姓名':'Client Name','Client Group':'客户组别','客户组别':'Client Group','Status':'状态','状态':'Status','Product':'产品','产品':'Product','Benefits':'保障项目','保障项目':'Benefits','Coverage Amount':'保障额','保障额':'Coverage Amount',
+    'Policy Review':'保单检阅','保单检阅':'Policy Review','Add Client':'新增客户','新增客户':'Add Client','Import':'导入','导入':'Import',
+    'Pipeline Overview':'管线概览','管线概览':'Pipeline Overview','To Follow Up':'待跟进','待跟进':'To Follow Up','To Meet Up':'待约见','待约见':'To Meet Up','To Submit':'待呈交','待呈交':'To Submit','To Approve':'待批准','待批准':'To Approve',
+    'Active Policies':'生效中的保单','生效中的保单':'Active Policies','Cases this month':'本月案件','本月案件':'Cases this month','Pending':'待处理','待处理':'Pending',
+    'Monthly TPC':'本月 TPC','本月 TPC':'Monthly TPC','Production':'业绩','业绩':'Production','October production · Tap to view breakdown':'10月业绩 · 点击查看明细','Tap to view breakdown':'点击查看明细',
+    'View By':'查看方式','查看方式':'View By','Month':'月份','月份':'Month','Whole Year':'全年','全年':'Whole Year','Bar Chart Group By':'柱状图分组','柱状图分组':'Bar Chart Group By','Day':'日','日':'Day','Week':'周','周':'Week',
+    'Select Year':'选择年份','选择年份':'Select Year','Select Month':'选择月份','选择月份':'Select Month','Selected Production Range':'所选业绩范围','所选业绩范围':'Selected Production Range','Total Sales / TPC':'总销售 / TPC','总销售 / TPC':'Total Sales / TPC','Number of Cases':'案件数量','案件数量':'Number of Cases','Average Case Size':'平均案件金额','平均案件金额':'Average Case Size',
+    'Sales Trend · Line Chart':'销售趋势 · 折线图','销售趋势 · 折线图':'Sales Trend · Line Chart','Sales Breakdown · Bar Chart':'销售明细 · 柱状图','销售明细 · 柱状图':'Sales Breakdown · Bar Chart','Daily Sales':'每日销售','每日销售':'Daily Sales',
+    'Create Contest':'建立竞赛','建立竞赛':'Create Contest','Contest Name':'竞赛名称','竞赛名称':'Contest Name','Metric':'指标','指标':'Metric','Start':'开始','开始':'Start','End':'结束','结束':'End','Product / Insurance Type':'产品 / 保险类型','产品 / 保险类型':'Product / Insurance Type','Target':'目标','目标':'Target','Save Contest':'保存竞赛','保存竞赛':'Save Contest',
+    'Historical production':'历史业绩','历史业绩':'Historical production','Client directory':'客户目录','客户目录':'Client directory','Protection analysis':'保障分析','保障分析':'Protection analysis','Commission & trend':'佣金与趋势','佣金与趋势':'Commission & trend','Targets & progress':'目标与进度','目标与进度':'Targets & progress','Appearance & data':'外观与资料','外观与资料':'Appearance & data',
+    'Appearance':'外观','外观':'Appearance','Light, Dark or follow iPhone system':'浅色、深色或跟随 iPhone 系统','浅色、深色或跟随 iPhone 系统':'Light, Dark or follow iPhone system','Light':'浅色','浅色':'Light','Dark':'深色','深色':'Dark','System':'跟随系统','跟随系统':'System',
+    'Backup Data':'备份资料','备份资料':'Backup Data','Restore Data':'恢复资料','恢复资料':'Restore Data','Reset All Data':'重置全部资料','重置全部资料':'Reset All Data',
+    'Push Notifications':'推送通知','推送通知':'Push Notifications','Enable on this device':'在此设备启用','在此设备启用':'Enable on this device','Send Test Notification':'发送测试通知','发送测试通知':'Send Test Notification','Daily Briefing':'每日简报','每日简报':'Daily Briefing','Pipeline Reminders':'管线提醒','管线提醒':'Pipeline Reminders','Inactive Day Reminder':'无业绩日提醒','无业绩日提醒':'Inactive Day Reminder','Monthly Progress':'每月进度','每月进度':'Monthly Progress','Quiet Hours':'静音时间','静音时间':'Quiet Hours',
+    'Time':'时间','时间':'Time','Day of month':'每月日期','每月日期':'Day of month','Choose the month you want to view on Home. Production, TPC and Cases will follow this month.':'选择首页要查看的月份。业绩、TPC 和案件会跟随这个月份。',
+    'Coverage Calculator':'保障计算器','保障计算器':'Coverage Calculator','Life Coverage Breakdown':'人寿保障分析','人寿保障分析':'Life Coverage Breakdown','Critical Illness Coverage Breakdown':'重大疾病保障分析','重大疾病保障分析':'Critical Illness Coverage Breakdown',
+    'Life Need':'人寿需求','人寿需求':'Life Need','Life Gap':'人寿缺口','人寿缺口':'Life Gap','CI Gap':'CI 缺口','CI 缺口':'CI Gap','Emergency Fund Gap':'紧急备用金缺口','紧急备用金缺口':'Emergency Fund Gap','Current Savings Runway':'现有储蓄可维持月数','现有储蓄可维持月数':'Current Savings Runway','Emergency Fund Target':'紧急备用金目标','紧急备用金目标':'Emergency Fund Target',
+    '1 · Client & Family':'1 · 客户与家庭','1 · 客户与家庭':'1 · Client & Family','2 · Financial Needs':'2 · 财务需求','2 · 财务需求':'2 · Financial Needs','3 · Existing Protection':'3 · 现有保障','3 · 现有保障':'3 · Existing Protection','Existing Life Coverage':'现有人寿保障','现有人寿保障':'Existing Life Coverage','Existing CI Coverage':'现有 CI 保障','现有 CI 保障':'Existing CI Coverage','Life Income Replacement':'人寿收入替代','人寿收入替代':'Life Income Replacement','CI Income Replacement':'CI 收入替代','CI 收入替代':'CI Income Replacement',
+    'New / Manual':'新客户 / 手动输入','新客户 / 手动输入':'New / Manual','Change':'更换','更换':'Change','Existing Client':'现有客户','现有客户':'Existing Client','Monthly Income':'每月收入','每月收入':'Monthly Income','Spouse Income':'配偶收入','配偶收入':'Spouse Income','Children':'孩子人数','孩子人数':'Children','Youngest Child Age':'最小孩子年龄','最小孩子年龄':'Youngest Child Age','Current Savings':'现有储蓄','现有储蓄':'Current Savings',
+    'Sales Historical production':'销售 · 历史业绩','销售 · 历史业绩':'Sales · Historical production'
+  };
+  function replaceTextNode(node){
+    const raw=node.nodeValue;
+    if(!raw || !raw.trim()) return;
+    let t=raw.replace(/\u00a0/g,' ');
+    const key=t.trim();
+    const hasZh=/[\u4e00-\u9fff]/.test(key);
+    const exact=dict[key];
+    if(exact && ((window.__salesTrackerLang==='zh' && !hasZh) || (window.__salesTrackerLang==='en' && hasZh))){
+      const leading=t.match(/^\s*/)?.[0]||'', trailing=t.match(/\s*$/)?.[0]||'';
+      node.nodeValue=leading+exact+trailing;
+      return;
+    }
+    if(window.__salesTrackerLang==='zh'){
+      const phrases=[['Historical production','历史业绩'],['Client directory','客户目录'],['Protection analysis','保障分析'],['Commission & trend','佣金与趋势'],['Targets & progress','目标与进度'],['Appearance & data','外观与资料'],['Tap to view breakdown','点击查看明细'],['Coverage analysis','保障分析'],['Coverage Calculator','保障计算器']];
+      for(const [a,b] of phrases) t=t.split(a).join(b);
+    }else{
+      const phrases=[['历史业绩','Historical production'],['客户目录','Client directory'],['保障分析','Protection analysis'],['佣金与趋势','Commission & trend'],['目标与进度','Targets & progress'],['外观与资料','Appearance & data'],['点击查看明细','Tap to view breakdown'],['保障计算器','Coverage Calculator']];
+      for(const [a,b] of phrases) t=t.split(a).join(b);
+    }
+    if(t!==raw) node.nodeValue=t;
+  }
+  function translateDOM(){
+    window.__salesTrackerLang=appLang;
+    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode(n){
+      if(!n.parentElement) return NodeFilter.FILTER_REJECT;
+      const tag=n.parentElement.tagName;
+      if(['SCRIPT','STYLE','NOSCRIPT'].includes(tag)) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }});
+    const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);nodes.forEach(replaceTextNode);
+    const btn=document.getElementById('langToggle');if(btn)btn.textContent=appLang==='zh'?'English':'中文';
+    const sub=document.getElementById('brandSub');if(sub)sub.textContent=appLang==='zh'?'保险 CRM · Apple Native · V2.7':'Insurance CRM · Apple Native · V2.7';
+    document.documentElement.lang=appLang==='zh'?'zh-CN':'en';
+  }
+  window.__translateSalesTrackerUI=translateDOM;
+  const originalToggle=window.toggleLang;
+  window.toggleLang=function(){
+    appLang=appLang==='zh'?'en':'zh';
+    localStorage.setItem('salesTrackerLang',appLang);
+    try{window.cloudScheduleSync?.()}catch(e){}
+    render();
+    setTimeout(translateDOM,0);
+  };
+  const observer=new MutationObserver(()=>{clearTimeout(window.__langTimer);window.__langTimer=setTimeout(translateDOM,30)});
+  observer.observe(document.body,{childList:true,subtree:true,characterData:true});
+  setTimeout(translateDOM,50);
+})();
+</script>
+
 </body></html>
