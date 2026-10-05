@@ -1519,9 +1519,21 @@ function pushDeviceStatusText(){
 }
 function toggleNotificationMaster(){
  db.notificationPrefs.enabled=!db.notificationPrefs.enabled;save();
+ if(window.cloudReady) window.cloudScheduleSync?.();
 }
 function toggleNotificationPref(k){
  db.notificationPrefs[k]=!db.notificationPrefs[k];save();
+ if(window.cloudReady) window.cloudScheduleSync?.();
+}
+async function syncNotificationPrefsNow(){
+ if(!window.cloudReady || !window.salesTrackerUser?.id || !window.salesTrackerSupabase) return;
+ const {error}=await window.salesTrackerSupabase.from('app_settings').upsert({
+  user_id:window.salesTrackerUser.id,
+  setting_key:'notifications',
+  setting_value:db.notificationPrefs||DEFAULT_NOTIFICATION_PREFS,
+  updated_at:new Date().toISOString()
+ },{onConflict:'user_id,setting_key'});
+ if(error) throw error;
 }
 function urlBase64ToUint8Array(base64String){
  const padding='='.repeat((4-base64String.length%4)%4);const base64=(base64String+padding).replace(/-/g,'+').replace(/_/g,'/');
@@ -1546,7 +1558,9 @@ async function enablePushNotifications(){
   const jsonSub=sub.toJSON();
   const {error}=await window.salesTrackerSupabase.from('push_subscriptions').upsert({user_id:window.salesTrackerUser?.id||null,endpoint:jsonSub.endpoint,p256dh:jsonSub.keys?.p256dh||'',auth:jsonSub.keys?.auth||'',user_agent:navigator.userAgent,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
   if(error)throw error;
-  db.notificationPrefs.enabled=true;save();toast('Notifications enabled on this device');
+  db.notificationPrefs.enabled=true;save();
+  await syncNotificationPrefsNow();
+  toast('Notifications enabled on this device');
  }catch(e){console.error(e);alert('Could not enable notifications: '+(e?.message||'Please try again.'));}
 }
 
@@ -1555,7 +1569,9 @@ async function sendTestNotification(){
  try{
   const {data,error}=await window.salesTrackerSupabase.functions.invoke('send-sales-notifications',{body:{test:true}});
   if(error)throw error;
-  if(data?.ok)toast('Test notification sent'); else throw new Error(data?.error||'Push function did not return success');
+  if(data?.ok && Number(data?.sent||0)>0) toast('Test notification sent');
+  else if(data?.ok && Number(data?.sent||0)===0) throw new Error('No active push subscription found on this device. Tap “Enable on this device” first.');
+  else throw new Error(data?.error||'Push function did not return success');
  }catch(e){console.error(e);alert('Test notification failed: '+(e?.message||'Please deploy the notification Edge Function first.'));}
 }
 async function backupData(){

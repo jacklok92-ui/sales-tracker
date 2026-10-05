@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sales-tracker-shell-v1';
+const CACHE_NAME = 'sales-tracker-shell-v2.7.1';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
@@ -24,7 +24,13 @@ self.addEventListener('notificationclick', event => {
   event.waitUntil((async () => {
     const list = await clients.matchAll({type:'window', includeUncontrolled:true});
     for (const client of list) {
-      if ('focus' in client) { await client.focus(); return; }
+      if ('focus' in client) {
+        if ('navigate' in client) {
+          try { await client.navigate(url); } catch (_) {}
+        }
+        await client.focus();
+        return;
+      }
     }
     if (clients.openWindow) await clients.openWindow(url);
   })());
