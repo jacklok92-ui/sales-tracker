@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover,interactive-widget=resizes-content">
 <meta name="theme-color" content="#f7f6f2">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="logo.png">
@@ -630,6 +630,32 @@ html.dark-ios .heroTPC{background:linear-gradient(145deg,rgba(28,28,30,.96),rgba
 .sub{font-size:9px!important;margin-top:4px!important;color:var(--ios-muted)!important}
 @media(max-width:520px){.brandWrap{gap:9px}.appLogo{width:38px!important;height:38px!important;border-radius:11px!important}.brand{font-size:19px!important}.sub{font-size:9px!important}.top{align-items:center!important}}
 </style>
+<style id="v272-screen-fit-fix">
+/* V2.7.2 Screen-fit / iOS zoom stability */
+html,body{width:100%;max-width:100%;min-width:0;margin:0;padding:0;overflow-x:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+html{touch-action:pan-x pan-y;}
+body{touch-action:pan-x pan-y;overscroll-behavior-x:none;}
+.app,main,#nav{max-width:100%;box-sizing:border-box;}
+.app{width:100%;min-width:0;overflow-x:clip;}
+main{width:100%;min-width:0;overflow-x:clip;}
+section{max-width:100%;min-width:0;}
+img,video,canvas,svg{max-width:100%;}
+@media(max-width:760px){
+  .app{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right));}
+}
+</style>
+<script id="v272-no-pinch-zoom">
+// Keep the PWA at 1:1 scale on iPhone/iPad. Normal vertical/horizontal scrolling remains enabled.
+(function(){
+  const stopGestureZoom = e => e.preventDefault();
+  document.addEventListener('gesturestart', stopGestureZoom, {passive:false});
+  document.addEventListener('gesturechange', stopGestureZoom, {passive:false});
+  document.addEventListener('gestureend', stopGestureZoom, {passive:false});
+  document.addEventListener('touchmove', function(e){
+    if(e.touches && e.touches.length > 1) e.preventDefault();
+  }, {passive:false});
+})();
+</script>
 </head>
 <body>
 <div class="app">
