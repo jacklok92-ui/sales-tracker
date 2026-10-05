@@ -2350,6 +2350,79 @@ body:not(.cloudLocked) .app{
   min-height:100vh;
 }
 
+
+/* ===== Definitive post-login scrolling fix ===== */
+/* The login overlay is locked, but the actual app must use the document scroller. */
+html{
+  width:100%!important;
+  min-height:100%!important;
+  height:auto!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior-x:none!important;
+}
+body{
+  width:100%!important;
+  min-height:100dvh!important;
+  height:auto!important;
+  margin:0!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+  overscroll-behavior-x:none!important;
+  overscroll-behavior-y:auto!important;
+  touch-action:auto!important;
+}
+
+/* Logged out: lock only the login state. */
+body.cloudLocked{
+  height:100dvh!important;
+  min-height:100dvh!important;
+  overflow:hidden!important;
+  -webkit-overflow-scrolling:auto!important;
+  overscroll-behavior:none!important;
+  touch-action:none!important;
+}
+body.cloudLocked #cloudGate{
+  display:flex!important;
+  overflow:hidden!important;
+  touch-action:none!important;
+}
+body.cloudLocked .app{
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+
+/* Logged in: hide the gate and explicitly restore document scrolling. */
+body:not(.cloudLocked){
+  height:auto!important;
+  min-height:100dvh!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  touch-action:auto!important;
+}
+body:not(.cloudLocked) #cloudGate{
+  display:none!important;
+  pointer-events:none!important;
+}
+body:not(.cloudLocked) .app{
+  visibility:visible!important;
+  pointer-events:auto!important;
+  overflow:visible!important;
+  height:auto!important;
+  min-height:100dvh!important;
+  max-height:none!important;
+  touch-action:auto!important;
+}
+
+/* Make sure no parent element traps vertical scrolling. */
+body:not(.cloudLocked) main{
+  overflow:visible!important;
+  height:auto!important;
+  max-height:none!important;
+  touch-action:auto!important;
+}
+
 </style>
 
 
