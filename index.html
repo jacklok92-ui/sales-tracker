@@ -1702,18 +1702,35 @@ async function resetData(){
       <div class="small">${monthLabel(now)} production · Tap to view breakdown</div></div>
     <div class="quickStats"><div class="card quickStat breakdownTap" onclick="homeProductionBreakdown('Cases')"><div class="qIcon">▤</div><div><div class="qLabel">Cases this month</div><div class="qValue">${cases}</div></div></div><div class="card quickStat breakdownTap" onclick="homePendingBreakdown()"><div class="qIcon orange">◷</div><div><div class="qLabel">Pending</div><div class="qValue">${pending}</div></div></div></div>
     <div class="quickActions"><button class="quickAction" onclick="startCase()"><b>＋</b>New Case</button><button class="quickAction" onclick="caseForm('new')"><b>♙</b>Add Client</button><button class="quickAction" onclick="show('coverage',null)"><b>▤</b>Policy Review</button><button class="quickAction" onclick="importExcel()"><b>↑</b>Import</button></div>
-    <div class="homeSectionHead"><h3>Pipeline Overview</h3></div>
-    <div class="pipelineMini"><div class="small" style="margin-top:-4px;margin-bottom:10px">Tap to view</div></div><div class="pipelineMini"><div class="card pipeMini approach" onclick="homePipelineBreakdown('To Approach')"><div class="n">${approach}</div><div class="s">To Approach</div></div><div class="card pipeMini meet" onclick="homePipelineBreakdown('To Meet Up')"><div class="n">${meet}</div><div class="s">To Meet Up</div></div><div class="card pipeMini follow" onclick="homePipelineBreakdown('To Follow Up')"><div class="n">${follow}</div><div class="s">To Follow Up</div></div><div class="card pipeMini submit" onclick="homePipelineBreakdown('To Submit')"><div class="n">${submit}</div><div class="s">To Submit</div></div><div class="card pipeMini approve" onclick="homePipelineBreakdown('To Approve')"><div class="n">${approve}</div><div class="s">To Approve</div></div></div>
+    <div class="homeSectionHead"><h3>Pipeline Overview</h3><div class="small pipelineTapHint">Tap to view</div></div>
+    <div class="pipelineMini pipelineOverview">
+      <div class="card pipeMini approach" onclick="homePipelineBreakdown('To Approach')"><div class="pipeIcon">♙</div><div class="pipeInfo"><div class="n">${approach}</div><div class="s">To Approach</div></div></div>
+      <div class="card pipeMini follow" onclick="homePipelineBreakdown('To Follow Up')"><div class="pipeIcon">◷</div><div class="pipeInfo"><div class="n">${follow}</div><div class="s">To Follow Up</div></div></div>
+      <div class="card pipeMini meet" onclick="homePipelineBreakdown('To Meet Up')"><div class="pipeIcon">▣</div><div class="pipeInfo"><div class="n">${meet}</div><div class="s">To Meet Up</div></div></div>
+      <div class="card pipeMini submit" onclick="homePipelineBreakdown('To Submit')"><div class="pipeIcon">▤</div><div class="pipeInfo"><div class="n">${submit}</div><div class="s">To Submit</div></div></div>
+      <div class="card pipeMini approve" onclick="homePipelineBreakdown('To Approve')"><div class="pipeIcon">♢</div><div class="pipeInfo"><div class="n">${approve}</div><div class="s">To Approve</div></div></div>
+    </div>
     <div class="homeSectionHead"><h3>Existing Portfolio</h3></div>
     <div class="card portfolioHero breakdownTap" onclick="show('portfolio',null)"><div class="label">Active Policies</div><div class="portfolioValue">${active.length}</div><div class="portfolioSub">Under ${clientCount} client${clientCount===1?'':'s'} · active Inforce policies only</div><div class="portfolioMeta two"><div><b>${active.length}</b><span>Active Policies</span></div><div><b>${clientCount}</b><span>Clients</span></div></div></div>
     <div class="homeSectionHead"><h3>Today's Coach</h3></div>
     <div class="card coachCard" onclick="openMoreMenu()"><div class="coachIcon">💡</div><div class="coachText"><div class="title">Today's Coach ✨</div><div class="msg">${iosCoach()}</div></div><div class="coachArrow">›</div></div>`;
  }
+ function pipelineStageClass(status){
+   const s=normalizeStatus(status);
+   return ({
+     'To Approach':'approach',
+     'To Meet Up':'meet',
+     'To Follow Up':'follow',
+     'To Submit':'submit',
+     'To Approve':'approve'
+   })[s]||'neutral';
+ }
+
  function iosPipeline(){
    const stages=['All','To Approach','To Meet Up','To Follow Up','To Submit','To Approve']; let activeStage=window.iosPipeStage||'All';
    let rows=db.cases.filter(c=>c.kind!=='Existing Policy' && (activeStage==='All'||normalizeStatus(c.status)===activeStage));
    rows=rows.slice().sort((a,b)=>String(b.inforce||b.createdAt||'').localeCompare(String(a.inforce||a.createdAt||'')));
-   document.getElementById('pipeline').innerHTML=`<div class="pipelineHeader"><div class="pageTitle">Pipeline</div><div class="small" style="margin-top:5px">Keep every opportunity moving.</div></div><div class="segScroll">${stages.map(s=>`<button class="${s===activeStage?'active':''}" onclick="window.iosPipeStage='${s}';render()">${s}${s==='All'?' '+rows.length:' '+db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)===s).length}</button>`).join('')}</div><div class="pipeSearch"><span>⌕</span><input placeholder="Search client name, product..." oninput="window.iosPipeQ=this.value;render()"><button class="filterBtn" onclick="openClientFilter()">☷</button></div><div class="list">${rows.filter(c=>{let q=(window.iosPipeQ||'').toLowerCase();return !q||String(c.client||'').toLowerCase().includes(q)||String(c.product||c.type||'').toLowerCase().includes(q)}).map(c=>`<div class="card leadRow" onclick="editCase('${c.id}')"><div class="avatar">${initials(c.client)}</div><div class="leadMain"><div class="leadName" role="button" tabindex="0" onclick="event.stopPropagation();editCase('${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.stopPropagation();editCase('${c.id}')}">${c.client||'-'}</div><div class="leadProduct">${c.product||c.type||'-'} · ${money(tpc(c))} TPC</div></div><div class="leadRight"><div class="leadStatus">${normalizeStatus(c.status)}</div><div class="leadTime">${c.inforce?dateStr(c.inforce):'No date'}</div></div></div>`).join('')||'<div class="empty">No pipeline records.</div>'}</div>`;
+   document.getElementById('pipeline').innerHTML=`<div class="pipelineHeader"><div class="pageTitle">Pipeline</div><div class="small" style="margin-top:5px">Keep every opportunity moving.</div></div><div class="segScroll">${stages.map(s=>`<button class="${s===activeStage?'active':''}" onclick="window.iosPipeStage='${s}';render()">${s}${s==='All'?' '+rows.length:' '+db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)===s).length}</button>`).join('')}</div><div class="pipeSearch"><span>⌕</span><input placeholder="Search client name, product..." oninput="window.iosPipeQ=this.value;render()"><button class="filterBtn" onclick="openClientFilter()">☷</button></div><div class="list">${rows.filter(c=>{let q=(window.iosPipeQ||'').toLowerCase();return !q||String(c.client||'').toLowerCase().includes(q)||String(c.product||c.type||'').toLowerCase().includes(q)}).map(c=>`<div class="card leadRow stage-${pipelineStageClass(c.status)}" onclick="editCase('${c.id}')"><div class="avatar">${initials(c.client)}</div><div class="leadMain"><div class="leadName" role="button" tabindex="0" onclick="event.stopPropagation();editCase('${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.stopPropagation();editCase('${c.id}')}">${c.client||'-'}</div><div class="leadProduct">${c.product||c.type||'-'} · ${money(tpc(c))} TPC</div></div><div class="leadRight"><div class="leadStatus">${normalizeStatus(c.status)}</div><div class="leadTime">${c.inforce?dateStr(c.inforce):'No date'}</div></div></div>`).join('')||'<div class="empty">No pipeline records.</div>'}</div>`;
  }
  function iosPortfolio(){
    const active=activePolicies();
@@ -2576,6 +2593,176 @@ body:not(.cloudLocked) main{
 }
 /* Active stage always wins over the pastel glass color. */
 .segScroll button.active{background:#17181d!important;color:#fff!important;border-color:#17181d!important}
+
+
+/* ===== Home Pipeline Overview: 3 + 2 liquid-glass layout ===== */
+.pipelineTapHint{
+  margin-top:-4px!important;
+  margin-bottom:10px!important;
+}
+.pipelineOverview{
+  display:grid!important;
+  grid-template-columns:repeat(6,minmax(0,1fr))!important;
+  gap:10px!important;
+}
+.pipelineOverview .pipeMini{
+  min-width:0!important;
+  min-height:88px;
+  box-sizing:border-box;
+  display:flex!important;
+  align-items:center!important;
+  gap:14px!important;
+  padding:16px 18px!important;
+  text-align:left!important;
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.9)!important;
+  box-shadow:
+    0 10px 28px rgba(55,70,95,.08),
+    inset 0 1px 0 rgba(255,255,255,.9)!important;
+  backdrop-filter:blur(20px)!important;
+  -webkit-backdrop-filter:blur(20px)!important;
+}
+.pipelineOverview .pipeMini:nth-child(1),
+.pipelineOverview .pipeMini:nth-child(2),
+.pipelineOverview .pipeMini:nth-child(3){
+  grid-column:span 2!important;
+}
+.pipelineOverview .pipeMini:nth-child(4){
+  grid-column:2 / span 2!important;
+}
+.pipelineOverview .pipeMini:nth-child(5){
+  grid-column:4 / span 2!important;
+}
+.pipelineOverview .pipeIcon{
+  width:48px;height:48px;flex:0 0 48px;
+  border-radius:16px;
+  display:grid;place-items:center;
+  font-size:24px;font-weight:500;
+  background:rgba(255,255,255,.34);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+}
+.pipelineOverview .pipeInfo{min-width:0}
+.pipelineOverview .pipeMini .n{
+  font-size:28px!important;
+  line-height:1!important;
+  font-weight:820!important;
+  color:#101218!important;
+}
+.pipelineOverview .pipeMini .s{
+  margin-top:5px!important;
+  font-size:12px!important;
+  color:#6d7480!important;
+}
+.pipelineOverview .pipeMini.approach{
+  background:linear-gradient(135deg,rgba(226,239,255,.86),rgba(255,255,255,.58))!important;
+}
+.pipelineOverview .pipeMini.approach .pipeIcon{color:#3f82df;background:rgba(209,229,255,.62)}
+.pipelineOverview .pipeMini.follow{
+  background:linear-gradient(135deg,rgba(255,231,238,.86),rgba(255,255,255,.58))!important;
+}
+.pipelineOverview .pipeMini.follow .pipeIcon{color:#e35d82;background:rgba(255,211,224,.60)}
+.pipelineOverview .pipeMini.meet{
+  background:linear-gradient(135deg,rgba(255,247,222,.88),rgba(255,255,255,.58))!important;
+}
+.pipelineOverview .pipeMini.meet .pipeIcon{color:#d49a25;background:rgba(255,232,178,.62)}
+.pipelineOverview .pipeMini.submit{
+  background:linear-gradient(135deg,rgba(239,231,255,.88),rgba(255,255,255,.58))!important;
+}
+.pipelineOverview .pipeMini.submit .pipeIcon{color:#8758d8;background:rgba(225,208,255,.62)}
+.pipelineOverview .pipeMini.approve{
+  background:linear-gradient(135deg,rgba(225,248,237,.88),rgba(255,255,255,.58))!important;
+}
+.pipelineOverview .pipeMini.approve .pipeIcon{color:#2da678;background:rgba(203,239,219,.62)}
+
+@media(max-width:760px){
+  .pipelineOverview{gap:8px!important}
+  .pipelineOverview .pipeMini{
+    min-height:82px;
+    padding:13px 12px!important;
+    gap:9px!important;
+  }
+  .pipelineOverview .pipeIcon{
+    width:40px;height:40px;flex-basis:40px;border-radius:13px;font-size:20px;
+  }
+  .pipelineOverview .pipeMini .n{font-size:24px!important}
+  .pipelineOverview .pipeMini .s{font-size:10px!important}
+}
+
+/* ===== Pipeline client cards: status-matched liquid glass ===== */
+.leadRow{
+  position:relative!important;
+  overflow:hidden!important;
+  border:1px solid rgba(255,255,255,.92)!important;
+  box-shadow:
+    0 10px 30px rgba(55,70,95,.07),
+    inset 0 1px 0 rgba(255,255,255,.92)!important;
+  backdrop-filter:blur(22px)!important;
+  -webkit-backdrop-filter:blur(22px)!important;
+}
+.leadRow::after{
+  content:"";
+  position:absolute;
+  width:130px;height:130px;
+  right:-45px;top:-55px;
+  border-radius:50%;
+  background:rgba(255,255,255,.28);
+  filter:blur(10px);
+  pointer-events:none;
+}
+.leadRow .leadMain,
+.leadRow .leadRight,
+.leadRow .avatar{position:relative;z-index:1}
+
+/* To Approach — blue */
+.leadRow.stage-approach{
+  background:linear-gradient(135deg,rgba(226,239,255,.90),rgba(255,255,255,.70))!important;
+}
+.leadRow.stage-approach .avatar{
+  background:rgba(205,228,255,.72)!important;color:#397bd5!important;
+}
+.leadRow.stage-approach .leadStatus{color:#397bd5!important}
+
+/* To Meet Up — yellow */
+.leadRow.stage-meet{
+  background:linear-gradient(135deg,rgba(255,247,222,.90),rgba(255,255,255,.70))!important;
+}
+.leadRow.stage-meet .avatar{
+  background:rgba(255,231,179,.70)!important;color:#cc921e!important;
+}
+.leadRow.stage-meet .leadStatus{color:#cc921e!important}
+
+/* To Follow Up — pink */
+.leadRow.stage-follow{
+  background:linear-gradient(135deg,rgba(255,231,238,.90),rgba(255,255,255,.70))!important;
+}
+.leadRow.stage-follow .avatar{
+  background:rgba(255,211,224,.72)!important;color:#dc5b80!important;
+}
+.leadRow.stage-follow .leadStatus{color:#dc5b80!important}
+
+/* To Submit — purple */
+.leadRow.stage-submit{
+  background:linear-gradient(135deg,rgba(239,231,255,.90),rgba(255,255,255,.70))!important;
+}
+.leadRow.stage-submit .avatar{
+  background:rgba(224,207,255,.72)!important;color:#8255cf!important;
+}
+.leadRow.stage-submit .leadStatus{color:#8255cf!important}
+
+/* To Approve — green */
+.leadRow.stage-approve{
+  background:linear-gradient(135deg,rgba(225,248,237,.90),rgba(255,255,255,.70))!important;
+}
+.leadRow.stage-approve .avatar{
+  background:rgba(202,239,218,.72)!important;color:#299e74!important;
+}
+.leadRow.stage-approve .leadStatus{color:#299e74!important}
+
+/* Fallback / unexpected stage remains neutral glass. */
+.leadRow.stage-neutral{
+  background:rgba(255,255,255,.72)!important;
+}
 
 </style>
 
