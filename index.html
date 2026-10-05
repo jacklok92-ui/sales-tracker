@@ -2316,6 +2316,40 @@ body{
   }
 }
 
+
+/* ===== Login locks scrolling; main app restores scrolling after login ===== */
+html{
+  overflow:auto!important;
+  height:100%;
+  overscroll-behavior:auto!important;
+}
+body{
+  overflow:auto!important;
+  height:auto;
+  min-height:100%;
+  overscroll-behavior:auto!important;
+  touch-action:auto;
+}
+body.cloudLocked{
+  overflow:hidden!important;
+  height:100%!important;
+  min-height:100%!important;
+  overscroll-behavior:none!important;
+  touch-action:none!important;
+}
+body.cloudLocked #cloudGate{
+  overflow:hidden!important;
+  touch-action:none!important;
+}
+body:not(.cloudLocked) #cloudGate{
+  display:none!important;
+}
+body:not(.cloudLocked) .app{
+  overflow:visible!important;
+  height:auto!important;
+  min-height:100vh;
+}
+
 </style>
 
 
