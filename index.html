@@ -1665,14 +1665,14 @@ async function resetData(){
  let homeMonthKey=window.homeMonthKey||monthKey(new Date());
  window.homeMonthKey=homeMonthKey;
  function selectedHomeDate(){const [y,m]=String(window.homeMonthKey||monthKey()).split('-').map(Number);return new Date(y,m-1,1)}
- function openHomeMonthPicker(){
+ window.openHomeMonthPicker=function(){
    const d=selectedHomeDate(), years=[];
    for(let y=new Date().getFullYear()-5;y<=new Date().getFullYear()+2;y++)years.push(y);
    const months=Array.from({length:12},(_,i)=>new Date(2000,i,1).toLocaleDateString('en-MY',{month:'long'}));
    const body=`<div class="small">Choose the month you want to view on Home. Production, TPC and Cases will follow this month.</div><div class="homeMonthPicker"><label>Year<select id="homeYear">${years.map(y=>`<option value="${y}" ${y===d.getFullYear()?'selected':''}>${y}</option>`).join('')}</select></label><label>Month<select id="homeMonth">${months.map((m,i)=>`<option value="${i+1}" ${i===d.getMonth()?'selected':''}>${m}</option>`).join('')}</select></label></div><button class="primary" style="width:100%;margin-top:16px" onclick="applyHomeMonth()">View Month</button>`;
    modal('Home Month',body,true);
  }
- function applyHomeMonth(){const y=+document.getElementById('homeYear').value,m=+document.getElementById('homeMonth').value;window.homeMonthKey=`${y}-${String(m).padStart(2,'0')}`;closeModal();render()}
+ window.applyHomeMonth=function(){const y=+document.getElementById('homeYear').value,m=+document.getElementById('homeMonth').value;window.homeMonthKey=`${y}-${String(m).padStart(2,'0')}`;closeModal();render()}
  function homePendingBreakdown(){const rows=db.cases.filter(c=>c.kind!=='Existing Policy'&&['To Follow Up','To Submit','To Approve'].includes(normalizeStatus(c.status)));modal('Pending Pipeline Breakdown',`<div class="small" style="margin-bottom:12px">${rows.length} pending case${rows.length===1?'':'s'} · Follow Up + Submit + Approve</div><div class="list">${rows.map(c=>`<div class="item breakdownTap" onclick="editCase('${c.id}')"><div class="row"><div><b>${c.client||'-'}</b><div class="small">${normalizeStatus(c.status)} · ${c.product||c.type||'-'}</div><div class="small">${c.inforce?dateStr(c.inforce):'No date'}</div></div><b>${money(tpc(c))}</b></div></div>`).join('')||'<div class="empty">No pending cases.</div>'}</div>`,true)}
  function homePipelineBreakdown(status){const rows=db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)===status);modal(status+' Breakdown',`<div class="small" style="margin-bottom:12px">${rows.length} case${rows.length===1?'':'s'}</div><div class="list">${rows.map(c=>`<div class="item breakdownTap" onclick="editCase('${c.id}')"><div class="row"><div><b>${c.client||'-'}</b><div class="small">${c.product||c.type||'-'} · ${money(tpc(c))} TPC</div><div class="small">${c.inforce?dateStr(c.inforce):'No date'}</div></div><span class="pill">${normalizeStatus(c.status)}</span></div></div>`).join('')||'<div class="empty">No cases in this stage.</div>'}</div>`,true)}
  function initials(n){return String(n||'?').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'?'}
@@ -2597,7 +2597,7 @@ body:not(.cloudLocked) main{
 
 /* ===== Home Pipeline Overview: 3 + 2 liquid-glass layout ===== */
 .pipelineTapHint{
-  margin-top:-4px!important;
+  margin-top:4px!important;
   margin-bottom:10px!important;
 }
 .pipelineOverview{
@@ -2629,10 +2629,10 @@ body:not(.cloudLocked) main{
   grid-column:span 2!important;
 }
 .pipelineOverview .pipeMini:nth-child(4){
-  grid-column:2 / span 2!important;
+  grid-column:1 / span 3!important;
 }
 .pipelineOverview .pipeMini:nth-child(5){
-  grid-column:4 / span 2!important;
+  grid-column:4 / span 3!important;
 }
 .pipelineOverview .pipeIcon{
   width:48px;height:48px;flex:0 0 48px;
