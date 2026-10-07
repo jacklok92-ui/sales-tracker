@@ -2239,8 +2239,10 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
       <div class="small">${monthLabel(now)} production · Tap to view breakdown</div></div>
     <div class="quickStats"><div class="card quickStat breakdownTap" onclick="homeProductionBreakdown('Cases')"><div class="qIcon">▤</div><div><div class="qLabel">Cases this month</div><div class="qValue">${cases}</div></div></div><div class="card quickStat breakdownTap" onclick="homePendingBreakdown()"><div class="qIcon orange">◷</div><div><div class="qLabel">Pending</div><div class="qValue">${pending}</div></div></div></div>
     <div class="quickActions"><button class="quickAction" onclick="startCase()"><b>＋</b>New Case</button><button class="quickAction" onclick="caseForm('new')"><b>♙</b>Add Client</button><button class="quickAction" onclick="show('coverage',null)"><b>▤</b>Policy Review</button><button class="quickAction" onclick="importExcel()"><b>↑</b>Import</button></div>
-    <div class="homeSectionHead pipelineOverviewHead"><h3>Pipeline Overview</h3><div class="small">Tap to view</div></div>
-    <div class="pipelineMini pipelineOverview"><div class="card pipeMini approach" onclick="homePipelineBreakdown('To Approach')"><div class="pipeIcon">♙</div><div class="pipeInfo"><div class="n">${db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='To Approach').length}</div><div class="s">To Approach</div></div></div><div class="card pipeMini follow" onclick="homePipelineBreakdown('To Follow Up')"><div class="pipeIcon">◷</div><div class="pipeInfo"><div class="n">${follow}</div><div class="s">To Follow Up</div></div></div><div class="card pipeMini meet" onclick="homePipelineBreakdown('To Meet Up')"><div class="pipeIcon">▣</div><div class="pipeInfo"><div class="n">${meet}</div><div class="s">To Meet Up</div></div></div><div class="card pipeMini submit" onclick="homePipelineBreakdown('To Submit')"><div class="pipeIcon">▤</div><div class="pipeInfo"><div class="n">${submit}</div><div class="s">To Submit</div></div></div><div class="card pipeMini approve" onclick="homePipelineBreakdown('To Approve')"><div class="pipeIcon">♢</div><div class="pipeInfo"><div class="n">${approve}</div><div class="s">To Approve</div></div></div></div>
+    <div class="card pipelineOverviewWrap">
+      <div class="pipelineOverviewHead"><h3>Pipeline Overview</h3><div class="pipelineOverviewSub">Tap to view</div></div>
+      <div class="pipelineMini pipelineOverview"><div class="card pipeMini approach" onclick="homePipelineBreakdown('To Approach')"><div class="pipeIcon">♙</div><div class="pipeInfo"><div class="n">${db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='To Approach').length}</div><div class="s">To Approach</div></div></div><div class="card pipeMini follow" onclick="homePipelineBreakdown('To Follow Up')"><div class="pipeIcon">◷</div><div class="pipeInfo"><div class="n">${follow}</div><div class="s">To Follow Up</div></div></div><div class="card pipeMini meet" onclick="homePipelineBreakdown('To Meet Up')"><div class="pipeIcon">▣</div><div class="pipeInfo"><div class="n">${meet}</div><div class="s">To Meet Up</div></div></div><div class="card pipeMini submit" onclick="homePipelineBreakdown('To Submit')"><div class="pipeIcon">▤</div><div class="pipeInfo"><div class="n">${submit}</div><div class="s">To Submit</div></div></div><div class="card pipeMini approve" onclick="homePipelineBreakdown('To Approve')"><div class="pipeIcon">♢</div><div class="pipeInfo"><div class="n">${approve}</div><div class="s">To Approve</div></div></div></div>
+    </div>
     <div class="homeSectionHead"><h3>Existing Portfolio</h3></div>
     <div class="card portfolioHero breakdownTap" onclick="show('portfolio',null)"><div class="label">Active Policies</div><div class="portfolioValue">${active.length}</div><div class="portfolioSub">Under ${clientCount} client${clientCount===1?'':'s'} · active Inforce policies only</div><div class="portfolioMeta two"><div><b>${active.length}</b><span>Active Policies</span></div><div><b>${clientCount}</b><span>Clients</span></div></div></div>
     <div class="homeSectionHead"><h3>Today's Coach</h3></div>
@@ -2820,4 +2822,41 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
 })();
 </script>
 
+
+<style id="v28-pipeline-and-modal-fix">
+/* V2.8.1 — Pipeline Overview matches reference layout + modal actions stay tappable */
+.pipelineOverviewWrap{
+  padding:20px 22px 22px!important;
+  border-radius:24px!important;
+  background:rgba(255,255,255,.52)!important;
+  border:1px solid rgba(255,255,255,.92)!important;
+  box-shadow:0 16px 42px rgba(45,62,90,.075),inset 0 1px 0 rgba(255,255,255,.95)!important;
+  backdrop-filter:blur(28px) saturate(150%)!important;
+  -webkit-backdrop-filter:blur(28px) saturate(150%)!important;
+}
+.pipelineOverviewHead{display:flex!important;align-items:baseline!important;justify-content:space-between!important;margin:0 0 6px!important}
+.pipelineOverviewHead h3{margin:0!important;font-size:22px!important;font-weight:850!important;letter-spacing:-.035em!important}
+.pipelineOverviewSub{font-size:14px!important;color:#6f7682!important;font-weight:500!important;white-space:nowrap}
+.pipelineOverview{grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:10px!important;margin-top:14px!important}
+.pipelineOverview .pipeMini:nth-child(1),.pipelineOverview .pipeMini:nth-child(2),.pipelineOverview .pipeMini:nth-child(3){grid-column:span 2!important}
+.pipelineOverview .pipeMini:nth-child(4){grid-column:1/span 3!important}
+.pipelineOverview .pipeMini:nth-child(5){grid-column:4/span 3!important}
+.pipelineOverview .pipeMini{min-height:92px!important;padding:14px 18px!important;border-radius:22px!important}
+.pipelineOverview .pipeIcon{width:48px!important;height:48px!important;flex-basis:48px!important;border-radius:16px!important;font-size:22px!important}
+.pipelineOverview .pipeMini .n{font-size:28px!important;line-height:1!important}
+.pipelineOverview .pipeMini .s{font-size:14px!important;line-height:1.25!important;margin-top:7px!important;color:#69717d!important}
+.modal{z-index:20000!important}
+.modalBox{padding-bottom:28px!important}
+.newClientActions{position:relative!important;z-index:5!important;padding-bottom:6px!important}
+@media(max-width:760px){
+  .pipelineOverviewWrap{padding:16px 14px 17px!important;border-radius:22px!important}
+  .pipelineOverviewHead h3{font-size:20px!important}
+  .pipelineOverviewSub{font-size:13px!important}
+  .pipelineOverview{gap:8px!important}
+  .pipelineOverview .pipeMini{min-height:84px!important;padding:11px 10px!important;gap:7px!important}
+  .pipelineOverview .pipeIcon{width:38px!important;height:38px!important;flex-basis:38px!important;border-radius:13px!important;font-size:18px!important}
+  .pipelineOverview .pipeMini .n{font-size:23px!important}
+  .pipelineOverview .pipeMini .s{font-size:11px!important;margin-top:5px!important}
+}
+</style>
 </body></html>
