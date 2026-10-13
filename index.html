@@ -1215,7 +1215,8 @@ function calculatedCommencement(inforce){if(!inforce)return '';const d=new Date(
 function cycleStart(c){return calculatedCommencement(c.inforce)||c.inforce||c.commissionStart||c.commencement||''}
 function monthlyComm(c,date){
  if(!eligible(c))return 0;
- let start=new Date(cycleStart(c)+'T00:00:00'), d=new Date(date+'T00:00:00');
+ let startDate=c.forceInforceCommissionStart?(c.inforce||''):cycleStart(c);
+ let start=new Date(startDate+'T00:00:00'), d=new Date(date+'T00:00:00');
  let m=Math.floor((d.getFullYear()-start.getFullYear())*12+d.getMonth()-start.getMonth())+1;
  if(m<1||m>duration(c)*12)return 0;
  let y=Math.ceil(m/12), yearly=tpc(c)*db.settings.rates[y-1]*factor(c);
@@ -1917,11 +1918,11 @@ function income(){
  let months=[],cursor=new Date(from.getFullYear(),from.getMonth(),1);
  while(cursor<=now){let key=monthKey(cursor),v=active.reduce((s,c)=>s+monthlyComm(c,key+'-01'),0);months.push({key,v});cursor.setMonth(cursor.getMonth()+1)}
  let currentKey=monthKey(),utd=active.reduce((s,c)=>s+monthlyComm(c,currentKey+'-01'),0);
- let increment=active.filter(c=>c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((s,c)=>s+monthlyComm({...c,commissionStart:c.inforce},currentKey+'-01'),0);
+ let increment=active.filter(c=>c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((s,c)=>s+monthlyComm({...c,forceInforceCommissionStart:true},currentKey+'-01'),0);
  let clients=clientRecords().length,existingActive=active.filter(c=>c.kind==='Existing Policy').length;
- let max=Math.max(...months.map(x=>x.v),1),bars=months.slice(-24).map((x,i)=>`<button class="bar" title="${x.key}: ${money(x.v)}" onclick="incomeMonthBreakdown('${x.key}')" style="height:${Math.max(3,x.v/max*100)}%;padding:0;border:0;cursor:pointer;position:relative"><span style="position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(-50%);font-size:9px;white-space:nowrap;color:var(--muted)">${money(x.v)}</span><span style="position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);font-size:9px;white-space:nowrap">${x.key.slice(5)}</span></button>`).join('');
+ let max=Math.max(...months.map(x=>x.v),1),chartMonths=months.slice(-24),bars=chartMonths.map((x)=>`<button class="incomeBarItem" title="${x.key}: ${money(x.v)}" aria-label="${x.key}: ${money(x.v)}" onclick="incomeMonthBreakdown('${x.key}')"><span class="incomeBarValue">${money(x.v)}</span><span class="incomeBarTrack"><i class="incomeBarFill" style="height:${Math.max(3,x.v/max*100)}%"></i></span><span class="incomeBarMonth">${x.key.slice(5)}</span></button>`).join('');
  document.getElementById('income').innerHTML=`<div class="row"><div class="section">Income</div><select style="width:130px" onchange="incomePeriod=this.value;render()"><option value="month" ${period==='month'?'selected':''}>1 Month</option><option value="quarter" ${period==='quarter'?'selected':''}>Quarter</option><option value="year" ${period==='year'?'selected':''}>1 Year</option><option value="3y" ${period==='3y'?'selected':''}>3 Years</option><option value="5y" ${period==='5y'?'selected':''}>5 Years</option><option value="7y" ${period==='7y'?'selected':''}>7 Years</option><option value="10y" ${period==='10y'?'selected':''}>10 Years</option></select></div>
- <div class="card"><div class="label">Estimated Monthly Income</div><div class="small">Estimated commission you should receive for each month from all active policies that are still within their commission cycle. Tap a bar for breakdown.</div><div class="barChart" style="height:180px;align-items:flex-end;padding-bottom:28px;overflow-x:auto">${bars||'<div class="empty">No commission data.</div>'}</div></div>
+ <div class="card incomeChartCard"><div class="incomeChartHead"><div><div class="label">Estimated Monthly Income</div><div class="small">Tap a month to view policy breakdown.</div></div><div class="incomeChartLegend"><i></i> Monthly</div></div><div class="incomeChartScroll"><div class="incomeChartGrid">${bars||'<div class="empty">No commission data.</div>'}</div></div><div class="incomeChartFoot">Commission estimate · last ${chartMonths.length} months</div></div>
  <div class="section">Estimated Income</div><div class="grid">
  <div class="card" onclick="incomeBreakdown('increment')"><div class="label">This Month Increment</div><div class="metric">${money(increment)}</div><div class="small">New production in ${currentKey} that adds recurring commission · Tap for breakdown</div></div>
  <div class="card" onclick="incomeBreakdown('utd')"><div class="label">Estimated UTD Monthly Income</div><div class="metric">${money(utd)}</div><div class="small">All active policies still within commission cycle · Tap for breakdown</div></div>
@@ -1932,7 +1933,7 @@ function income(){
 let incomePeriod='year';
 function incomeBreakdown(type){
  let date=monthKey()+'-01', rows=[];
- if(type==='increment') rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(monthKey())).map(c=>({c,v:monthlyComm({...c,commissionStart:c.inforce},date)})).filter(x=>x.v>0);
+ if(type==='increment') rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(monthKey())).map(c=>({c,v:monthlyComm({...c,forceInforceCommissionStart:true},date)})).filter(x=>x.v>0);
  else rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce').map(c=>({c,v:monthlyComm(c,date)})).filter(x=>x.v>0);
  let title=type==='increment'?'This Month Increment Breakdown':'Estimated UTD Monthly Income Breakdown';
  modal(title,`<div class="small" style="margin-bottom:12px">${rows.length} policy${rows.length===1?'':'ies'} · ${money(rows.reduce((s,x)=>s+x.v,0))}</div><div class="list">${rows.map(x=>`<div class="item"><div class="row"><div><b>${x.c.client}</b><div class="small">${x.c.product||x.c.type} · ${x.c.kind}</div><div class="small">Inforce ${dateStr(x.c.inforce)} · Commission ${Math.ceil((new Date(date).getFullYear()-new Date((cycleStart(x.c)||x.c.inforce)+'T00:00:00').getFullYear())*12+(new Date(date).getMonth()-new Date((cycleStart(x.c)||x.c.inforce)+'T00:00:00').getMonth())+1,0)/12} year</div></div><b>${money(x.v)}</b></div></div>`).join('')||'<div class="empty">No commission for this period.</div>'}</div>`,true)
@@ -2314,7 +2315,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
    const utdIncome=active.reduce((s,c)=>s+monthlyComm(c,date),0);
    // This month increment = recurring monthly commission created by inforce production in the current month.
    const thisMonthRows=active.filter(c=>c.inforce?.startsWith(todayKey)&&c.kind!=='Existing Policy');
-   const thisMonthIncrement=thisMonthRows.reduce((s,c)=>s+monthlyComm({...c,commissionStart:c.inforce},date),0);
+   const thisMonthIncrement=thisMonthRows.reduce((s,c)=>s+monthlyComm({...c,forceInforceCommissionStart:true},date),0);
    const clientCount=new Set(active.map(c=>c.ic||c.client).filter(Boolean)).size;
    const recent=active.slice().sort((a,b)=>String(b.inforce||'').localeCompare(String(a.inforce||''))).slice(0,5);
    const bars=[];
@@ -2945,5 +2946,21 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
 .pipelineOverview .pipeMini{cursor:pointer!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent}
 .deleteClientBtn{color:#dc3b3b!important;border-color:rgba(220,59,59,.22)!important;background:rgba(255,238,238,.72)!important}
 @media(max-width:760px){.newClientActions{position:relative!important;z-index:20!important;padding-bottom:max(10px,env(safe-area-inset-bottom))!important}.deleteClientBtn{font-size:12px!important}}
+
+/* Modern income chart: separated columns, no overlapping value labels */
+.incomeChartCard{padding:18px 16px 14px;overflow:hidden}
+.incomeChartHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px}
+.incomeChartLegend{font-size:11px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;gap:6px;padding:6px 9px;border-radius:99px;background:rgba(99,102,241,.08)}
+.incomeChartLegend i{width:7px;height:7px;border-radius:50%;background:linear-gradient(180deg,#60a5fa,#6366f1);display:inline-block}
+.incomeChartScroll{overflow-x:auto;overscroll-behavior-x:contain;padding:2px 0 4px}
+.incomeChartGrid{display:flex;align-items:stretch;gap:8px;min-width:max-content;height:190px;padding:0 2px;position:relative;background:repeating-linear-gradient(to top,transparent 0,transparent 46px,rgba(148,163,184,.13) 47px,transparent 48px)}
+.incomeBarItem{appearance:none;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:7px;width:48px;padding:0 2px;cursor:pointer;color:var(--muted);min-height:0}
+.incomeBarValue{font-size:10px;line-height:1.2;white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums;max-width:68px;overflow:hidden;text-overflow:ellipsis;opacity:.9}
+.incomeBarTrack{height:132px;width:100%;display:flex;align-items:flex-end;justify-content:center;border-radius:8px 8px 3px 3px;overflow:hidden;background:rgba(148,163,184,.08)}
+.incomeBarFill{display:block;width:72%;min-height:3px;border-radius:7px 7px 2px 2px;background:linear-gradient(180deg,#60a5fa 0%,#6366f1 100%);box-shadow:0 3px 10px rgba(99,102,241,.16);transition:height .2s ease}
+.incomeBarItem:active .incomeBarFill{filter:brightness(.92)}
+.incomeBarMonth{font-size:11px;line-height:1.2;color:var(--muted);font-variant-numeric:tabular-nums}
+.incomeChartFoot{font-size:11px;color:var(--muted);margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+@media(max-width:600px){.incomeChartCard{padding:16px 12px 12px}.incomeChartGrid{gap:6px;height:178px}.incomeBarItem{width:45px}.incomeBarTrack{height:122px}.incomeBarValue{font-size:9px}}
 </style>
 </body></html>
