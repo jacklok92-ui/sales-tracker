@@ -2602,13 +2602,15 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
    const approve=db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='To Approve').length;
    const active=activePolicies(), income=active.reduce((s,c)=>s+monthlyComm(c,monthKey(new Date())+'-01'),0);
    const clientCount=new Set(active.map(c=>c.ic||c.client).filter(Boolean)).size;
-   const bars=Array.from({length:8},(_,i)=>{let d=new Date(now.getFullYear(),now.getMonth()-7+i,1),k=monthKey(d);return db.cases.filter(c=>String(c.inforce||'').startsWith(k)&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce').reduce((s,c)=>s+tpc(c),0)});
-   const max=Math.max(...bars,1);
+   const bars=Array.from({length:8},(_,i)=>{let d=new Date(now.getFullYear(),now.getMonth()-7+i,1),k=monthKey(d);return {key:k,label:d.toLocaleDateString('en-MY',{month:'short'}),value:db.cases.filter(c=>String(c.inforce||'').startsWith(k)&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce').reduce((s,c)=>s+tpc(c),0)}});
+   const max=Math.max(...bars.map(x=>x.value),1);
    document.getElementById('home').innerHTML=`
     <div class="iosHomeHead"><div class="iosGreeting">Good morning,</div><div class="iosName">Jack 👋</div>
       <div class="iosDateRow"><button class="homeMonthButton" onclick="openHomeMonthPicker()">▣ ${monthLabel(now)} <span style="color:var(--ios-muted)">⌄</span></button><div class="iosProfile">JL</div></div></div>
-    <div class="card heroTPC breakdownTap" onclick="homeProductionBreakdown('TPC')"><div class="heroTop"><div><div class="heroTitle">Monthly TPC</div><div class="heroValue">${money(tpcNow)}</div></div><div class="growth">${fmtPct(tpcNow,tpcPrev)}</div></div>
-      <div class="heroBars">${bars.map(v=>`<i style="height:${Math.max(18,(v/max)*100)}%"></i>`).join('')}</div>
+    <div class="card heroTPC breakdownTap" data-home-tpc-tap="1" role="button" tabindex="0" aria-label="Open ${monthLabel(now)} TPC breakdown">
+      <div class="heroTop"><div><div class="heroTitle">Monthly TPC</div><div class="heroValue">${money(tpcNow)}</div></div><div class="growth" aria-label="${tpcPrev>0?(((tpcNow-tpcPrev)/tpcPrev)*100).toFixed(1)+'% vs previous month':'No previous-month baseline'}">${tpcPrev>0?fmtPct(tpcNow,tpcPrev):(tpcNow>0?'New Production':'—')}</div></div>
+      <div class="heroBars" aria-label="TPC trend for the 8 months ending ${monthLabel(now)}">${bars.map((v,i)=>`<i title="${v.key}: ${money(v.value)}" aria-label="${v.key}: ${money(v.value)}" style="height:${Math.max(5,(v.value/max)*100)}%;${i===bars.length-1?'background:var(--ios-blue)':''}"></i>`).join('')}</div>
+      <div class="heroBarLabels">${bars.map(v=>`<span>${v.label}</span>`).join('')}</div>
       <div class="small">${monthLabel(now)} production · Tap to view breakdown</div></div>
     <div class="quickStats"><div class="card quickStat breakdownTap" onclick="homeProductionBreakdown('Cases')"><div class="qIcon">▤</div><div><div class="qLabel">Cases this month</div><div class="qValue">${cases}</div></div></div><div class="card quickStat breakdownTap" onclick="homePendingBreakdown()"><div class="qIcon orange">◷</div><div><div class="qLabel">Pending</div><div class="qValue">${pending}</div></div></div></div>
     <div class="quickActions"><button class="quickAction" onclick="startCase()"><b>＋</b>New Case</button><button class="quickAction" onclick="caseForm('new')"><b>♙</b>Add Client</button><button class="quickAction" onclick="show('coverage',null)"><b>▤</b>Policy Review</button><button class="quickAction" onclick="importExcel()"><b>↑</b>Import</button></div>
@@ -3405,4 +3407,27 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
 @media(max-width:600px){.incomeChartCard{padding:16px 12px 12px}.incomeChartHead .small{max-width:100%;line-height:1.45}.incomeChartLegend{display:none}.incomeChartGrid{gap:7px;height:195px}.incomeBarItem{flex-basis:39px;width:39px;min-width:39px}.incomeBarTrack{height:145px}.incomeBarValue{font-size:9px}.incomeChartSummary{gap:8px;padding:12px}.incomePeriodSelect{min-width:118px;font-size:14px}}
 
 </style>
-</body></html>
+<style id="home-tpc-tap-fix">
+.heroTPC[data-home-tpc-tap="1"]{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:rgba(0,122,255,.12);user-select:none}
+.heroTPC[data-home-tpc-tap="1"]:active{transform:scale(.995)}
+.heroTPC[data-home-tpc-tap="1"] .heroBars,.heroTPC[data-home-tpc-tap="1"] .heroBars *{pointer-events:none}
+.heroBarLabels{display:flex;gap:5px;margin-top:4px;color:var(--ios-muted);font-size:10px;text-align:center}
+.heroBarLabels span{flex:1;min-width:0}
+</style>
+<script id="home-tpc-tap-fix-js">
+(function(){
+  function activate(e){
+    const card=e.target&&e.target.closest&&e.target.closest('[data-home-tpc-tap="1"]');
+    if(!card)return;
+    e.preventDefault();
+    if(typeof window.homeProductionBreakdown==='function'){
+      try{window.homeProductionBreakdown('TPC');}
+      catch(err){console.error('TPC breakdown failed:',err);if(typeof window.toast==='function')window.toast('Unable to open TPC breakdown. Please refresh and try again.');}
+    }
+  }
+  document.addEventListener('click',activate,true);
+  document.addEventListener('keydown',function(e){
+    if((e.key==='Enter'||e.key===' ')&&e.target&&e.target.matches&&e.target.matches('[data-home-tpc-tap="1"]'))activate(e);
+  },true);
+})();
+</script></body></html>
