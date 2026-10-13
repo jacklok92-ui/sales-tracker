@@ -1835,7 +1835,7 @@ function profile(ic){
  let rows=db.cases.filter(c=>c.ic===ic),c=db.clients.find(x=>x.ic===ic)||rows[0],products=[...new Set(rows.map(x=>normalizeProduct(x.product||x.type)).filter(Boolean))];
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const benefitRows=(raw)=>{let b={};try{b=typeof raw==='string'?JSON.parse(raw||'{}'):(raw||{})}catch(e){b={}};const labels={b_Death___TPD:'Death / TPD',b_TMCC:'TMCC',b_43_CI:'43 CI',b_Acci_Death___TPD:'Acci Death / TPD',b_Acci_Medical_Reimbursement__per_case_:'Acci Medical Reimbursement (per case)'};let out=[];Object.keys(labels).forEach(k=>{if(b[k]!==undefined&&b[k]!==''&&b[k]!==null)out.push(`<div class="benefitSummaryRow"><span>${labels[k]}</span><strong>${money(Number(b[k])||0)}</strong></div>`)});if(b.med_plan||b.med_limit||b.med_whole||b.med_room||b.med_deduct){let d=[];if(b.med_plan)d.push(`<span>Plan <b>${esc(b.med_plan)}</b></span>`);if(b.med_limit)d.push(`<span>Annual Limit <b>${money(Number(b.med_limit)||0)}</b></span>`);if(b.med_whole)d.push(`<span>Whole Life Limit <b>${money(Number(b.med_whole)||0)}</b></span>`);if(b.med_room)d.push(`<span>Room &amp; Board <b>${money(Number(b.med_room)||0)}</b></span>`);if(b.med_deduct)d.push(`<span>Deductible / Med Saver <b>${money(Number(b.med_deduct)||0)}</b></span>`);out.push(`<div class="benefitSummaryRow benefitMedical"><span>Medical Card</span><div class="benefitDetailGrid">${d.join('')}</div></div>`)}if(b.payor==='on')out.push(`<div class="benefitSummaryRow"><span>Payor</span><strong>Included</strong></div>`);return out.length?`<div class="benefitSummary">${out.join('')}</div>`:`<div class="small" style="padding:10px 0">No benefit details recorded.</div>`};
- let productBlocks=products.map((p,i)=>{let rs=rows.filter(x=>normalizeProduct(x.product||x.type)===p),id='prod_'+i,active=rs.filter(x=>normalizeStatus(x.status)==='Inforce').length;return `<div class="profileProduct"><button class="profileProductHeader" onclick="document.getElementById('${id}').classList.toggle('hide')"><div><div class="profileProductName">${esc(p)}</div><div class="small">${rs.length} record${rs.length===1?'':'s'} · ${active} active</div></div><span class="chev">⌄</span></button><div id="${id}" class="hide profileProductBody">${rs.map(x=>`<div class="profilePolicy"><div class="row"><div><b>${esc(x.kind||'New Business')}</b><div class="small">${x.inforce?dateStr(x.inforce):'No inforce date'} · ${x.payMode||'-'}${x.policyNumber?` · Policy ${esc(x.policyNumber)}`:''}</div></div><span class="pill ${normalizeStatus(x.status)==='Inforce'?'green':normalizeStatus(x.status)==='Lapse'||normalizeStatus(x.status)==='Surrender'||normalizeStatus(x.status)==='Ceased'?'red':'yellow'}">${esc(normalizeStatus(x.status))}</span></div><div class="policyMetrics"><span>Premium <b>${x.premium?money(x.premium):'-'}</b></span><span>TPC <b>${money(tpc(x))}</b></span></div><div class="section" style="margin:14px 0 6px">Coverage</div>${benefitRows(x.benefit)}${x.kind==='Existing Policy'?'<div class="small" style="margin-top:10px">Imported existing policy</div>':x.kind==='Reduce'?'<div class="small" style="margin-top:10px">Reduced within existing commission cycle</div>':''}</div>`).join('')}</div></div>`}).join('');
+ let productBlocks=products.map((p,i)=>{let rs=rows.filter(x=>normalizeProduct(x.product||x.type)===p),id='prod_'+i,active=rs.filter(x=>normalizeStatus(x.status)==='Inforce').length;return `<div class="profileProduct"><button class="profileProductHeader" onclick="document.getElementById('${id}').classList.toggle('hide')"><div><div class="profileProductName">${esc(p)}</div><div class="small">${rs.length} record${rs.length===1?'':'s'} · ${active} active</div></div><span class="chev">⌄</span></button><div id="${id}" class="hide profileProductBody">${rs.map(x=>`<div class="profilePolicy"><div class="row"><div><b>${esc(x.kind||'New Business')}</b><div class="small">${x.inforce?dateStr(x.inforce):'No inforce date'} · ${x.payMode||'-'}${x.policyNumber?` · Policy ${esc(x.policyNumber)}`:''}</div></div><span class="pill ${normalizeStatus(x.status)==='Inforce'?'green':normalizeStatus(x.status)==='Lapse'||normalizeStatus(x.status)==='Surrender'||normalizeStatus(x.status)==='Ceased'?'red':'yellow'}">${esc(normalizeStatus(x.status))}</span></div><div class="policyMetrics"><span>Premium <b>${x.premium?money(x.premium):'-'}</b></span><span>TPC <b>${money(tpc(x))}</b></span></div><div class="section" style="margin:14px 0 6px">Coverage</div>${benefitRows(x.benefit)}${x.kind==='Existing Policy'?'<div class="small" style="margin-top:10px">Imported existing policy</div>':x.kind==='Reduce'?'<div class="small" style="margin-top:10px">Reduced within existing commission cycle</div>':''}<div class="actions" style="margin-top:12px;justify-content:flex-end"><button class="danger" type="button" onclick="deletePolicy('${String(ic).replace(/'/g, '&#39;')}','${String(x.id).replace(/'/g, '&#39;')}')">Delete Policy</button></div></div>`).join('')}</div></div>`}).join('');
  modal(c.client,`<div class="small">${esc(c.ic||'-')} · Group ${esc(c.group||'-')}</div><div class="section">Client Details</div><div class="clientDetailCard"><div><span>Name</span><b>${esc(c.client)}</b></div><div><span>IC</span><b>${esc(c.ic||'-')}</b></div><div><span>Records</span><b>${rows.length}</b></div></div><div class="section">Products</div><div class="profileProducts">${productBlocks||'<div class="empty">No product records.</div>'}</div><div class="section">Coverage Analysis</div><div class="card"><div class="small">Saved needs analyses for this client</div><button class="secondary" style="margin-top:8px" onclick="coveragePrefillForClient('${ic}')">Open Coverage Calculator</button><button class="secondary" style="margin-top:8px" onclick="profileCoverageHistory('${ic}')">Review Saved Analyses</button></div><div class="actions"><button class="secondary" onclick="caseForm('edit','${ic}','${c.id}')">Edit</button><button class="secondary" onclick="caseForm('reduce','${ic}','${c.id}')">Reduce</button><button class="danger" onclick="deleteClient('${ic}')">Delete</button></div>`,true)
 }
 function profileCoverageHistory(ic){
@@ -1845,7 +1845,44 @@ function profileCoverageHistory(ic){
 }
 function coveragePrefillForClient(ic){window.coveragePrefill={ic};closeModal();show('coverage')}
 
-function deleteClient(ic){if(confirm('Delete this client and all linked records?')){db.cases=db.cases.filter(c=>c.ic!==ic);db.clients=db.clients.filter(c=>c.ic!==ic);save();closeModal()}}
+async function deleteClient(ic){
+ const client=db.clients.find(x=>String(x.ic||'')===String(ic||''))||db.cases.find(x=>String(x.ic||'')===String(ic||''));
+ const clientName=client?.client||'this client';
+ if(!confirm(`Delete ${clientName} and ALL linked policies and saved coverage analyses? This cannot be undone.`))return;
+ const oldCases=db.cases,oldClients=db.clients,oldCoverage=db.coverageAnalyses||[];
+ try{
+   if(window.cloudReady&&window.cloudDeleteClientRecords){
+     await window.cloudDeleteClientRecords(ic,clientName);
+   }
+   const sameClient=row=>String(row.ic||'')===String(ic||'')||(!String(ic||'').trim()&&String(row.client||'')===String(clientName||''));
+   db.cases=db.cases.filter(c=>!sameClient(c));
+   db.clients=db.clients.filter(c=>!sameClient(c));
+   db.coverageAnalyses=(db.coverageAnalyses||[]).filter(x=>!(String(x.clientIc||x.ic||'')===String(ic||'')||(!String(ic||'').trim()&&String(x.clientName||x.client||'')===String(clientName||''))));
+   localStorage.setItem(KEY,JSON.stringify(db));
+   closeModal();render();
+   toast('Client and linked records deleted');
+ }catch(err){
+   console.error('Delete client failed:',err);
+   db.cases=oldCases;db.clients=oldClients;db.coverageAnalyses=oldCoverage;
+   alert('Delete failed. Cloud data was not fully deleted, so the client was kept. Please try again.');
+ }
+}
+async function deletePolicy(ic,id){
+ const policy=db.cases.find(c=>String(c.id)===String(id)&&String(c.ic||'')===String(ic||''));
+ if(!policy)return;
+ const label=policy.policyNumber?`policy ${policy.policyNumber}`:`${policy.product||policy.kind||'this policy'}`;
+ if(!confirm(`Delete only ${label}? The client and other policies will be kept.`))return;
+ try{
+   if(window.cloudReady&&window.cloudDeletePolicyRecord)await window.cloudDeletePolicyRecord(policy);
+   db.cases=db.cases.filter(c=>String(c.id)!==String(id));
+   localStorage.setItem(KEY,JSON.stringify(db));
+   closeModal();render();
+   toast('Policy deleted');
+ }catch(err){
+   console.error('Delete policy failed:',err);
+   alert('Delete failed. The policy was kept. Please try again.');
+ }
+}
 function contestValue(x){let rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce>=x.start&&c.inforce<=x.end&&(x.type==='Any'||normalizeProduct(c.product||c.type)===x.type));return x.metric==='TPC'?money(rows.reduce((s,c)=>s+tpc(c),0)):rows.length+' cases'}
 function contest(){
  document.getElementById('contest').innerHTML=`<div class="row"><div class="section">Contest Tracker</div><button class="primary" onclick="newContest()">＋ Create Contest</button></div><div class="list">${db.contests.map((x,i)=>`<div class="card"><div class="row"><div><b>${x.name}</b><div class="small">${x.start} → ${x.end} · ${x.type==='Any'?'All Products':x.type}</div></div><button class="danger" onclick="deleteContest(${i})">Delete</button></div><div class="metric">${contestValue(x)}</div><div class="small">Target: ${x.metric==='TPC'?money(x.target):x.target+' cases'}</div></div>`).join('')||'<div class="empty">No contests yet.</div>'}</div>`
@@ -2549,6 +2586,36 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     }finally{cloudLoading=false;}
   }
   window.cloudRestoreSnapshot=cloudRestoreSnapshot;
+
+  // Explicit cloud deletes prevent the next full upsert from resurrecting records.
+  window.cloudDeleteClientRecords=async function(ic,clientName=''){
+    if(!cloudUser)throw new Error('Not signed in');
+    clearTimeout(cloudTimer);
+    while(cloudSyncing) await new Promise(resolve=>setTimeout(resolve,100));
+    cloudLoading=true;
+    try{
+      let clientQuery=sb.from('clients').select('id').eq('user_id',cloudUser.id);
+      clientQuery=String(ic||'').trim()?clientQuery.eq('ic',String(ic)):clientQuery.eq('name',String(clientName||''));
+      const {data:clientRows,error:clientErr}=await clientQuery;
+      if(clientErr)throw clientErr;
+      const ids=(clientRows||[]).map(r=>r.id).filter(Boolean);
+      // Policies are child records: remove them before deleting their client rows.
+      for(const id of ids){const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('client_id',id);if(error)throw error;}
+      const {error:coverageErr}=await sb.from('coverage_analyses').delete().eq('user_id',cloudUser.id).eq('client_ic',String(ic||''));
+      if(coverageErr)throw coverageErr;
+      if(ids.length){const {error}=await sb.from('clients').delete().eq('user_id',cloudUser.id).in('id',ids);if(error)throw error;}
+    }finally{cloudLoading=false;}
+  };
+  window.cloudDeletePolicyRecord=async function(policy){
+    if(!cloudUser)throw new Error('Not signed in');
+    const id=policy?._cloudId;
+    if(!id)throw new Error('Missing cloud policy ID; refresh cloud data and try again');
+    clearTimeout(cloudTimer);
+    while(cloudSyncing) await new Promise(resolve=>setTimeout(resolve,100));
+    cloudLoading=true;
+    try{const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('id',id);if(error)throw error;}
+    finally{cloudLoading=false;}
+  };
 
   async function cloudUploadAll(){
     if(!cloudUser||cloudLoading)return;
