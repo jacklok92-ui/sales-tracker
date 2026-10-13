@@ -1851,9 +1851,8 @@ async function deleteClient(ic){
  if(!confirm(`Delete ${clientName} and ALL linked policies and saved coverage analyses? This cannot be undone.`))return;
  const oldCases=db.cases,oldClients=db.clients,oldCoverage=db.coverageAnalyses||[];
  try{
-   if(window.cloudReady&&window.cloudDeleteClientRecords){
-     await window.cloudDeleteClientRecords(ic,clientName);
-   }
+   if(!window.cloudReady||!window.cloudDeleteClientRecords)throw new Error('Cloud is not connected. Sign in and wait for Cloud synced before deleting.');
+   await window.cloudDeleteClientRecords(ic,clientName,db.cases.filter(c=>String(c.ic||'').trim().toLowerCase().replace(/\s+/g,'')===String(ic||'').trim().toLowerCase().replace(/\s+/g,'')),client?._cloudId);
    const sameClient=row=>String(row.ic||'')===String(ic||'')||(!String(ic||'').trim()&&String(row.client||'')===String(clientName||''));
    db.cases=db.cases.filter(c=>!sameClient(c));
    db.clients=db.clients.filter(c=>!sameClient(c));
@@ -1864,7 +1863,7 @@ async function deleteClient(ic){
  }catch(err){
    console.error('Delete client failed:',err);
    db.cases=oldCases;db.clients=oldClients;db.coverageAnalyses=oldCoverage;
-   alert('Delete failed. Cloud data was not fully deleted, so the client was kept. Please try again.');
+   alert('Delete failed. The client and policies were kept.\n\nReason: '+(err?.message||'Unknown cloud error')+'\n\nPlease check the Cloud synced status and try again.');
  }
 }
 async function deletePolicy(ic,id){
@@ -1873,14 +1872,15 @@ async function deletePolicy(ic,id){
  const label=policy.policyNumber?`policy ${policy.policyNumber}`:`${policy.product||policy.kind||'this policy'}`;
  if(!confirm(`Delete only ${label}? The client and other policies will be kept.`))return;
  try{
-   if(window.cloudReady&&window.cloudDeletePolicyRecord)await window.cloudDeletePolicyRecord(policy);
+   if(!window.cloudReady||!window.cloudDeletePolicyRecord)throw new Error('Cloud is not connected. Sign in and wait for Cloud synced before deleting.');
+   await window.cloudDeletePolicyRecord(policy);
    db.cases=db.cases.filter(c=>String(c.id)!==String(id));
    localStorage.setItem(KEY,JSON.stringify(db));
    closeModal();render();
    toast('Policy deleted');
  }catch(err){
    console.error('Delete policy failed:',err);
-   alert('Delete failed. The policy was kept. Please try again.');
+   alert('Delete failed. The policy was kept.\n\nReason: '+(err?.message||'Unknown cloud error')+'\n\nPlease check the Cloud synced status and try again.');
  }
 }
 function contestValue(x){let rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce>=x.start&&c.inforce<=x.end&&(x.type==='Any'||normalizeProduct(c.product||c.type)===x.type));return x.metric==='TPC'?money(rows.reduce((s,c)=>s+tpc(c),0)):rows.length+' cases'}
@@ -2587,34 +2587,66 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
   }
   window.cloudRestoreSnapshot=cloudRestoreSnapshot;
 
-  // Explicit cloud deletes prevent the next full upsert from resurrecting records.
-  window.cloudDeleteClientRecords=async function(ic,clientName=''){
+  // Explicit, verified cloud deletes. Delete child rows first, then the client row.
+  // Match by cloud ID AND stable client/policy references to handle older imported rows.
+  function deleteKey(v){return String(v??'').trim().toLowerCase().replace(/\s+/g,'')}
+  window.cloudDeleteClientRecords=async function(ic,clientName='',localPolicies=[],localClientCloudId=''){
     if(!cloudUser)throw new Error('Not signed in');
     clearTimeout(cloudTimer);
     while(cloudSyncing) await new Promise(resolve=>setTimeout(resolve,100));
     cloudLoading=true;
     try{
-      let clientQuery=sb.from('clients').select('id').eq('user_id',cloudUser.id);
-      clientQuery=String(ic||'').trim()?clientQuery.eq('ic',String(ic)):clientQuery.eq('name',String(clientName||''));
-      const {data:clientRows,error:clientErr}=await clientQuery;
-      if(clientErr)throw clientErr;
-      const ids=(clientRows||[]).map(r=>r.id).filter(Boolean);
-      // Policies are child records: remove them before deleting their client rows.
-      for(const id of ids){const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('client_id',id);if(error)throw error;}
-      const {error:coverageErr}=await sb.from('coverage_analyses').delete().eq('user_id',cloudUser.id).eq('client_ic',String(ic||''));
-      if(coverageErr)throw coverageErr;
-      if(ids.length){const {error}=await sb.from('clients').delete().eq('user_id',cloudUser.id).in('id',ids);if(error)throw error;}
+      const wantedIC=deleteKey(ic), wantedName=deleteKey(clientName);
+      const {data:allClients,error:clientsErr}=await sb.from('clients').select('id,ic,name').eq('user_id',cloudUser.id);
+      if(clientsErr)throw clientsErr;
+      const matchedClients=(allClients||[]).filter(c=>{
+        const rowIC=deleteKey(c.ic), rowName=deleteKey(c.name);
+        return (wantedIC && rowIC===wantedIC) || (!wantedIC && wantedName && rowName===wantedName);
+      });
+      const clientIds=[...new Set([...matchedClients.map(c=>c.id),localClientCloudId].filter(Boolean))];
+      const localRefs=new Set((localPolicies||[]).flatMap(p=>[String(p.id||''),String(p._cloudId||'')]).filter(Boolean));
+      const {data:allPolicies,error:policiesErr}=await sb.from('policies').select('id,client_id,source_reference').eq('user_id',cloudUser.id);
+      if(policiesErr)throw policiesErr;
+      const matchedPolicies=(allPolicies||[]).filter(p=>clientIds.includes(p.client_id)||(p.source_reference&&localRefs.has(String(p.source_reference)))||localRefs.has(String(p.id)));
+      for(const p of matchedPolicies){
+        const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('id',p.id);
+        if(error)throw error;
+      }
+      const {data:allCoverage,error:coverageReadErr}=await sb.from('coverage_analyses').select('id,client_ic,client_name').eq('user_id',cloudUser.id);
+      if(coverageReadErr)throw coverageReadErr;
+      const matchedCoverage=(allCoverage||[]).filter(x=>(wantedIC&&deleteKey(x.client_ic)===wantedIC)||(!wantedIC&&wantedName&&deleteKey(x.client_name)===wantedName));
+      for(const x of matchedCoverage){
+        const {error}=await sb.from('coverage_analyses').delete().eq('user_id',cloudUser.id).eq('id',x.id);
+        if(error)throw error;
+      }
+      for(const id of clientIds){
+        const {error}=await sb.from('clients').delete().eq('user_id',cloudUser.id).eq('id',id);
+        if(error)throw error;
+      }
+      const {data:verifyClients,error:verifyClientErr}=await sb.from('clients').select('id,ic,name').eq('user_id',cloudUser.id);
+      if(verifyClientErr)throw verifyClientErr;
+      if((verifyClients||[]).some(c=>(wantedIC&&deleteKey(c.ic)===wantedIC)||(!wantedIC&&wantedName&&deleteKey(c.name)===wantedName)))throw new Error('Cloud client row still exists after delete');
+      const {data:verifyPolicies,error:verifyPolicyErr}=await sb.from('policies').select('id,client_id,source_reference').eq('user_id',cloudUser.id);
+      if(verifyPolicyErr)throw verifyPolicyErr;
+      if((verifyPolicies||[]).some(p=>clientIds.includes(p.client_id)||(p.source_reference&&localRefs.has(String(p.source_reference)))||localRefs.has(String(p.id))))throw new Error('Cloud policy rows still exist after delete');
     }finally{cloudLoading=false;}
   };
   window.cloudDeletePolicyRecord=async function(policy){
     if(!cloudUser)throw new Error('Not signed in');
-    const id=policy?._cloudId;
-    if(!id)throw new Error('Missing cloud policy ID; refresh cloud data and try again');
+    if(!policy)throw new Error('Selected policy was not found');
     clearTimeout(cloudTimer);
     while(cloudSyncing) await new Promise(resolve=>setTimeout(resolve,100));
     cloudLoading=true;
-    try{const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('id',id);if(error)throw error;}
-    finally{cloudLoading=false;}
+    try{
+      const localId=String(policy.id||'');
+      const cloudId=String(policy._cloudId||'');
+      if(cloudId){const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('id',cloudId);if(error)throw error;}
+      if(localId){const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('source_reference',localId);if(error)throw error;}
+      if(!cloudId&&!localId)throw new Error('Missing policy ID; refresh cloud data and try again');
+      const {data:remaining,error:verifyErr}=await sb.from('policies').select('id,source_reference').eq('user_id',cloudUser.id);
+      if(verifyErr)throw verifyErr;
+      if((remaining||[]).some(p=>(cloudId&&String(p.id)===cloudId)||(localId&&String(p.source_reference||'')===localId)))throw new Error('Cloud policy row still exists after delete');
+    }finally{cloudLoading=false;}
   };
 
   async function cloudUploadAll(){
