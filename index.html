@@ -1694,16 +1694,19 @@ function coachAnswer(q){
 function askCoach(){const input=document.getElementById('coachQuestion'),q=input?.value.trim();if(!q)return;modal('AI Coach',`<div class="small" style="margin-bottom:8px">${q}</div><div class="card aiCoach"><b>Coach response</b><div style="margin-top:8px;line-height:1.6">${coachAnswer(q)}</div></div>`,true);input.value=''}
 function home(){const currentKey=monthKey(),productionRows=db.cases.filter(c=>c.inforce?.startsWith(currentKey)&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce'),productionTPC=productionRows.reduce((s,c)=>s+tpc(c),0),productionCases=Math.floor(productionTPC/1800),activeExisting=db.cases.filter(c=>c.kind==='Existing Policy'&&normalizeStatus(c.status)==='Inforce'),existingIncome=activeExisting.reduce((s,c)=>s+monthlyComm(c,currentKey+'-01'),0),ongoing=db.contests.filter(x=>x.start<=iso(new Date())&&x.end>=iso(new Date()));document.getElementById('home').innerHTML=`<div class="section">${L('production')}</div><div class="grid"><div class="card" role="button" tabindex="0" onclick="homeProductionBreakdown('TPC')" onkeydown="if(event.key==='Enter'||event.key===' ')homeProductionBreakdown('TPC',productionRows)"><div class="label">TPC</div><div class="metric">${money(productionTPC)}</div><div class="small">Current-month production · Tap to view breakdown</div></div><div class="card" role="button" tabindex="0" onclick="homeProductionBreakdown('Cases')" onkeydown="if(event.key==='Enter'||event.key===' ')homeProductionBreakdown('Cases',productionRows)"><div class="label">Cases</div><div class="metric">${productionCases}</div><div class="small">RM1,800 TPC = 1 case · Tap to view breakdown</div></div></div><div class="section">Vital Behaviour Tracker</div><div class="small" style="margin:-4px 0 10px">Actions are captured automatically when your pipeline moves forward.</div>${behaviourTrackerHome()}<div class="section">${L('existing')}</div><div class="grid"><div class="card" onclick="homeExistingBreakdown()"><div class="label">${L('activeImported')}</div><div class="metric">${activeExisting.length}</div><div class="small">All active imported policies · Tap to view</div></div><div class="card" onclick="homeExistingIncomeBreakdown()"><div class="label">${L('estimatedMonthly')}</div><div class="metric">${money(existingIncome)}</div><div class="small">Based on Inforce Date & commission cycle · Tap to view</div></div></div><div class="section">${L('ongoing')}</div><div class="list">${ongoing.map(x=>`<div class="card"><div class="row"><b>${x.name}</b><span class="pill yellow">${x.metric}</span></div><div class="small">${x.start} → ${x.end}</div><div class="metric">${contestValue(x)}</div></div>`).join('')||'<div class="empty">No ongoing contests.</div>'}</div>`}
 function homeProductionBreakdown(type){
-  const currentKey=monthKey();
-  const rows=db.cases.filter(c=>c.inforce?.startsWith(currentKey)&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce');
+  // Always use the month selected on Home, not the device's actual current month.
+  const selectedDate = typeof selectedHomeDate === 'function' ? selectedHomeDate() : new Date();
+  const selectedKey = window.homeMonthKey || monthKey(selectedDate);
+  const selectedLabel = monthLabel(new Date(Number(selectedKey.slice(0,4)), Number(selectedKey.slice(5,7))-1, 1));
+  const rows=db.cases.filter(c=>String(c.inforce||'').startsWith(selectedKey)&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce');
   const totalTPC = rows.reduce((s,c)=>s+tpc(c),0);
   const caseCount = Math.floor(totalTPC/1800);
-  const title = type==='TPC' ? 'Current Month · TPC Breakdown' : 'Current Month · Cases Breakdown';
+  const title = type==='TPC' ? `${selectedLabel} · TPC Breakdown` : `${selectedLabel} · Cases Breakdown`;
   const summary = type==='TPC'
     ? `${rows.length} production record${rows.length===1?'':'s'} · ${money(totalTPC)}`
     : `${caseCount} case${caseCount===1?'':'s'} · ${rows.length} production record${rows.length===1?'':'s'} · ${money(totalTPC)} TPC`;
   modal(title, `<div class="small" style="margin-bottom:12px">${summary}</div>
-    <div class="list">${rows.map((c,i)=>`
+    <div class="list">${rows.map((c)=>`
       <div class="item">
         <div class="row">
           <div>
@@ -1713,7 +1716,7 @@ function homeProductionBreakdown(type){
           </div>
           <b>${money(tpc(c))}</b>
         </div>
-      </div>`).join('') || '<div class="empty">No current-month production.</div>'}</div>`, true);
+      </div>`).join('') || `<div class="empty">No production records for ${selectedLabel}.</div>`}</div>`, true);
 }
 
 function homeExistingBreakdown(){
