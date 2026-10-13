@@ -1267,7 +1267,7 @@ function caseForm(mode,ic='',reduceId=''){
  <div class="field"><label>Payment Mode</label><select id="payMode" name="payMode">${[['monthly','Monthly'],['quarterly','Quarterly'],['halfyearly','Half-Yearly'],['yearly','Yearly'],['single','Single Premium']].map(a=>`<option value="${a[0]}" ${c.payMode===a[0]?'selected':''}>${a[1]}</option>`).join('')}</select></div>
  <div class="field"><label>Payment Term</label><select name="term"><option value="20" ${(!c.term||c.term==='20')?'selected':''}>20 Year / Full Pay</option><option value="10" ${c.term==='10'?'selected':''}>10 Year</option><option value="5" ${c.term==='5'?'selected':''}>5 Year</option></select></div>
  <div class="field"><label>TPC (First Year Annual Premium)</label><input id="tpc" name="tpc" readonly></div>
- </div><div class="actions newClientActions"><button type="button" class="secondary" onclick="closeModal()">Cancel</button><button class="primary newClientSave"><span>＋</span> Save New Case <b>→</b></button></div></form>`);
+ </div><div class="actions newClientActions">${mode==='edit'?`<button type="button" class="danger deleteClientBtn" onclick="deleteClient('${c.ic||''}')">Delete Client</button>`:''}<button type="button" class="secondary" onclick="closeModal()">Cancel</button><button class="primary newClientSave"><span>＋</span> Save ${mode==='edit'?'Changes':'New Case'} <b>→</b></button></div></form>`);
  let f=document.querySelector('.modal form'),p=f.querySelector('#premium'),pm=f.querySelector('#payMode'),t=f.querySelector('#tpc'),st=f.querySelector('#caseStatus'),df=f.querySelector('#inforceDateField'),inf=f.querySelector('#caseInforce');
  function calc(){let x=+p.value||0;t.value=(pm.value==='monthly'?x*12:pm.value==='quarterly'?x*4:pm.value==='halfyearly'?x*2:x).toFixed(2)}
  function syncInforce(){const yes=normalizeStatus(st.value)==='Inforce';df.style.display=yes?'':'none';inf.required=yes;if(yes&&!inf.value)inf.value=iso(new Date())}
@@ -1835,7 +1835,7 @@ function profile(ic){
  let rows=db.cases.filter(c=>c.ic===ic),c=db.clients.find(x=>x.ic===ic)||rows[0],products=[...new Set(rows.map(x=>normalizeProduct(x.product||x.type)).filter(Boolean))];
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const benefitRows=(raw)=>{let b={};try{b=typeof raw==='string'?JSON.parse(raw||'{}'):(raw||{})}catch(e){b={}};const labels={b_Death___TPD:'Death / TPD',b_TMCC:'TMCC',b_43_CI:'43 CI',b_Acci_Death___TPD:'Acci Death / TPD',b_Acci_Medical_Reimbursement__per_case_:'Acci Medical Reimbursement (per case)'};let out=[];Object.keys(labels).forEach(k=>{if(b[k]!==undefined&&b[k]!==''&&b[k]!==null)out.push(`<div class="benefitSummaryRow"><span>${labels[k]}</span><strong>${money(Number(b[k])||0)}</strong></div>`)});if(b.med_plan||b.med_limit||b.med_whole||b.med_room||b.med_deduct){let d=[];if(b.med_plan)d.push(`<span>Plan <b>${esc(b.med_plan)}</b></span>`);if(b.med_limit)d.push(`<span>Annual Limit <b>${money(Number(b.med_limit)||0)}</b></span>`);if(b.med_whole)d.push(`<span>Whole Life Limit <b>${money(Number(b.med_whole)||0)}</b></span>`);if(b.med_room)d.push(`<span>Room &amp; Board <b>${money(Number(b.med_room)||0)}</b></span>`);if(b.med_deduct)d.push(`<span>Deductible / Med Saver <b>${money(Number(b.med_deduct)||0)}</b></span>`);out.push(`<div class="benefitSummaryRow benefitMedical"><span>Medical Card</span><div class="benefitDetailGrid">${d.join('')}</div></div>`)}if(b.payor==='on')out.push(`<div class="benefitSummaryRow"><span>Payor</span><strong>Included</strong></div>`);return out.length?`<div class="benefitSummary">${out.join('')}</div>`:`<div class="small" style="padding:10px 0">No benefit details recorded.</div>`};
- let productBlocks=products.map((p,i)=>{let rs=rows.filter(x=>normalizeProduct(x.product||x.type)===p),id='prod_'+i,active=rs.filter(x=>normalizeStatus(x.status)==='Inforce').length;return `<div class="profileProduct"><button class="profileProductHeader" onclick="document.getElementById('${id}').classList.toggle('hide')"><div><div class="profileProductName">${esc(p)}</div><div class="small">${rs.length} record${rs.length===1?'':'s'} · ${active} active</div></div><span class="chev">⌄</span></button><div id="${id}" class="hide profileProductBody">${rs.map(x=>`<div class="profilePolicy"><div class="row"><div><b>${esc(x.kind||'New Business')}</b><div class="small">${x.inforce?dateStr(x.inforce):'No inforce date'} · ${x.payMode||'-'}${x.policyNumber?` · Policy ${esc(x.policyNumber)}`:''}</div></div><span class="pill ${normalizeStatus(x.status)==='Inforce'?'green':normalizeStatus(x.status)==='Lapse'||normalizeStatus(x.status)==='Surrender'||normalizeStatus(x.status)==='Ceased'?'red':'yellow'}">${esc(normalizeStatus(x.status))}</span></div><div class="policyMetrics"><span>Premium <b>${x.premium?money(x.premium):'-'}</b></span><span>TPC <b>${money(tpc(x))}</b></span></div><div class="section" style="margin:14px 0 6px">Coverage</div>${benefitRows(x.benefit)}<button class="danger" style="margin-top:10px" onclick="deletePolicy('${x.id}','${ic}')">Delete This Policy</button>${x.kind==='Existing Policy'?'<div class="small" style="margin-top:10px">Imported existing policy</div>':x.kind==='Reduce'?'<div class="small" style="margin-top:10px">Reduced within existing commission cycle</div>':''}</div>`).join('')}</div></div>`}).join('');
+ let productBlocks=products.map((p,i)=>{let rs=rows.filter(x=>normalizeProduct(x.product||x.type)===p),id='prod_'+i,active=rs.filter(x=>normalizeStatus(x.status)==='Inforce').length;return `<div class="profileProduct"><button class="profileProductHeader" onclick="document.getElementById('${id}').classList.toggle('hide')"><div><div class="profileProductName">${esc(p)}</div><div class="small">${rs.length} record${rs.length===1?'':'s'} · ${active} active</div></div><span class="chev">⌄</span></button><div id="${id}" class="hide profileProductBody">${rs.map(x=>`<div class="profilePolicy"><div class="row"><div><b>${esc(x.kind||'New Business')}</b><div class="small">${x.inforce?dateStr(x.inforce):'No inforce date'} · ${x.payMode||'-'}${x.policyNumber?` · Policy ${esc(x.policyNumber)}`:''}</div></div><span class="pill ${normalizeStatus(x.status)==='Inforce'?'green':normalizeStatus(x.status)==='Lapse'||normalizeStatus(x.status)==='Surrender'||normalizeStatus(x.status)==='Ceased'?'red':'yellow'}">${esc(normalizeStatus(x.status))}</span></div><div class="policyMetrics"><span>Premium <b>${x.premium?money(x.premium):'-'}</b></span><span>TPC <b>${money(tpc(x))}</b></span></div><div class="section" style="margin:14px 0 6px">Coverage</div>${benefitRows(x.benefit)}${x.kind==='Existing Policy'?'<div class="small" style="margin-top:10px">Imported existing policy</div>':x.kind==='Reduce'?'<div class="small" style="margin-top:10px">Reduced within existing commission cycle</div>':''}</div>`).join('')}</div></div>`}).join('');
  modal(c.client,`<div class="small">${esc(c.ic||'-')} · Group ${esc(c.group||'-')}</div><div class="section">Client Details</div><div class="clientDetailCard"><div><span>Name</span><b>${esc(c.client)}</b></div><div><span>IC</span><b>${esc(c.ic||'-')}</b></div><div><span>Records</span><b>${rows.length}</b></div></div><div class="section">Products</div><div class="profileProducts">${productBlocks||'<div class="empty">No product records.</div>'}</div><div class="section">Coverage Analysis</div><div class="card"><div class="small">Saved needs analyses for this client</div><button class="secondary" style="margin-top:8px" onclick="coveragePrefillForClient('${ic}')">Open Coverage Calculator</button><button class="secondary" style="margin-top:8px" onclick="profileCoverageHistory('${ic}')">Review Saved Analyses</button></div><div class="actions"><button class="secondary" onclick="caseForm('edit','${ic}','${c.id}')">Edit</button><button class="secondary" onclick="caseForm('reduce','${ic}','${c.id}')">Reduce</button><button class="danger" onclick="deleteClient('${ic}')">Delete</button></div>`,true)
 }
 function profileCoverageHistory(ic){
@@ -1845,27 +1845,7 @@ function profileCoverageHistory(ic){
 }
 function coveragePrefillForClient(ic){window.coveragePrefill={ic};closeModal();show('coverage')}
 
-async function deleteClient(ic){
- if(!confirm('Delete this client and all linked policies? This cannot be undone.'))return;
- const client=db.clients.find(c=>String(c.ic||'')===String(ic))||db.cases.find(c=>String(c.ic||'')===String(ic));
- const policyIds=db.cases.filter(c=>String(c.ic||'')===String(ic)).map(c=>({id:String(c.id??''),cloudId:c._cloudId||''}));
- try{
-  if(window.cloudReady&&window.cloudDeleteClient)await window.cloudDeleteClient(ic,client?.client||'',policyIds);
-  db.cases=db.cases.filter(c=>String(c.ic||'')!==String(ic));
-  db.clients=db.clients.filter(c=>String(c.ic||'')!==String(ic));
-  closeModal();save();
- }catch(e){console.error('Delete client failed',e);alert('Unable to delete this client from cloud. Nothing was removed locally. Please try again.\n'+(e?.message||''));}
-}
-async function deletePolicy(policyId,ic){
- const policy=db.cases.find(c=>String(c.id??'')===String(policyId)&&String(c.ic||'')===String(ic));
- if(!policy){alert('Policy record not found. Please refresh and try again.');return;}
- if(!confirm('Delete this policy only? The client and other policies will remain.'))return;
- try{
-  if(window.cloudReady&&window.cloudDeletePolicy)await window.cloudDeletePolicy(policyId,policy._cloudId||'');
-  db.cases=db.cases.filter(c=>!(String(c.id??'')===String(policyId)&&String(c.ic||'')===String(ic)));
-  closeModal();save();
- }catch(e){console.error('Delete policy failed',e);alert('Unable to delete this policy from cloud. Nothing was removed locally. Please try again.\n'+(e?.message||''));}
-}
+function deleteClient(ic){if(confirm('Delete this client and all linked records?')){db.cases=db.cases.filter(c=>c.ic!==ic);db.clients=db.clients.filter(c=>c.ic!==ic);save();closeModal()}}
 function contestValue(x){let rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce>=x.start&&c.inforce<=x.end&&(x.type==='Any'||normalizeProduct(c.product||c.type)===x.type));return x.metric==='TPC'?money(rows.reduce((s,c)=>s+tpc(c),0)):rows.length+' cases'}
 function contest(){
  document.getElementById('contest').innerHTML=`<div class="row"><div class="section">Contest Tracker</div><button class="primary" onclick="newContest()">＋ Create Contest</button></div><div class="list">${db.contests.map((x,i)=>`<div class="card"><div class="row"><div><b>${x.name}</b><div class="small">${x.start} → ${x.end} · ${x.type==='Any'?'All Products':x.type}</div></div><button class="danger" onclick="deleteContest(${i})">Delete</button></div><div class="metric">${contestValue(x)}</div><div class="small">Target: ${x.metric==='TPC'?money(x.target):x.target+' cases'}</div></div>`).join('')||'<div class="empty">No contests yet.</div>'}</div>`
@@ -2259,8 +2239,10 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
       <div class="small">${monthLabel(now)} production · Tap to view breakdown</div></div>
     <div class="quickStats"><div class="card quickStat breakdownTap" onclick="homeProductionBreakdown('Cases')"><div class="qIcon">▤</div><div><div class="qLabel">Cases this month</div><div class="qValue">${cases}</div></div></div><div class="card quickStat breakdownTap" onclick="homePendingBreakdown()"><div class="qIcon orange">◷</div><div><div class="qLabel">Pending</div><div class="qValue">${pending}</div></div></div></div>
     <div class="quickActions"><button class="quickAction" onclick="startCase()"><b>＋</b>New Case</button><button class="quickAction" onclick="caseForm('new')"><b>♙</b>Add Client</button><button class="quickAction" onclick="show('coverage',null)"><b>▤</b>Policy Review</button><button class="quickAction" onclick="importExcel()"><b>↑</b>Import</button></div>
-    <div class="homeSectionHead pipelineOverviewHead"><h3>Pipeline Overview</h3><div class="small">Tap to view</div></div>
-    <div class="pipelineMini pipelineOverview"><div class="card pipeMini approach" onclick="homePipelineBreakdown('To Approach')"><div class="pipeIcon">♙</div><div class="pipeInfo"><div class="n">${db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='To Approach').length}</div><div class="s">To Approach</div></div></div><div class="card pipeMini follow" onclick="homePipelineBreakdown('To Follow Up')"><div class="pipeIcon">◷</div><div class="pipeInfo"><div class="n">${follow}</div><div class="s">To Follow Up</div></div></div><div class="card pipeMini meet" onclick="homePipelineBreakdown('To Meet Up')"><div class="pipeIcon">▣</div><div class="pipeInfo"><div class="n">${meet}</div><div class="s">To Meet Up</div></div></div><div class="card pipeMini submit" onclick="homePipelineBreakdown('To Submit')"><div class="pipeIcon">▤</div><div class="pipeInfo"><div class="n">${submit}</div><div class="s">To Submit</div></div></div><div class="card pipeMini approve" onclick="homePipelineBreakdown('To Approve')"><div class="pipeIcon">♢</div><div class="pipeInfo"><div class="n">${approve}</div><div class="s">To Approve</div></div></div></div>
+    <div class="card pipelineOverviewWrap">
+      <div class="pipelineOverviewHead"><h3>Pipeline Overview</h3><button class="pipelineOverviewSub pipelineViewAllBtn" type="button" onclick="show('pipeline')">Tap to view</button></div>
+      <div class="pipelineMini pipelineOverview"><div class="card pipeMini approach" onclick="homePipelineBreakdown('To Approach')" role="button" tabindex="0"><div class="pipeIcon">♙</div><div class="pipeInfo"><div class="n">${db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='To Approach').length}</div><div class="s">To Approach</div></div></div><div class="card pipeMini follow" onclick="homePipelineBreakdown('To Follow Up')" role="button" tabindex="0"><div class="pipeIcon">◷</div><div class="pipeInfo"><div class="n">${follow}</div><div class="s">To Follow Up</div></div></div><div class="card pipeMini meet" onclick="homePipelineBreakdown('To Meet Up')" role="button" tabindex="0"><div class="pipeIcon">▣</div><div class="pipeInfo"><div class="n">${meet}</div><div class="s">To Meet Up</div></div></div><div class="card pipeMini submit" onclick="homePipelineBreakdown('To Submit')" role="button" tabindex="0"><div class="pipeIcon">▤</div><div class="pipeInfo"><div class="n">${submit}</div><div class="s">To Submit</div></div></div><div class="card pipeMini approve" onclick="homePipelineBreakdown('To Approve')" role="button" tabindex="0"><div class="pipeIcon">♢</div><div class="pipeInfo"><div class="n">${approve}</div><div class="s">To Approve</div></div></div></div>
+    </div>
     <div class="homeSectionHead"><h3>Existing Portfolio</h3></div>
     <div class="card portfolioHero breakdownTap" onclick="show('portfolio',null)"><div class="label">Active Policies</div><div class="portfolioValue">${active.length}</div><div class="portfolioSub">Under ${clientCount} client${clientCount===1?'':'s'} · active Inforce policies only</div><div class="portfolioMeta two"><div><b>${active.length}</b><span>Active Policies</span></div><div><b>${clientCount}</b><span>Clients</span></div></div></div>
     <div class="homeSectionHead"><h3>Today's Coach</h3></div>
@@ -2568,54 +2550,6 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
   }
   window.cloudRestoreSnapshot=cloudRestoreSnapshot;
 
-  async function cloudDeleteClient(ic, name, localPolicyRefs=[]){
-    if(!cloudUser||cloudLoading)throw new Error('Cloud is not ready. Please try again.');
-    clearTimeout(cloudTimer);cloudSyncing=true;
-    try{
-      let clientQuery=sb.from('clients').select('id').eq('user_id',cloudUser.id);
-      clientQuery=ic?clientQuery.eq('ic',String(ic)):clientQuery.eq('name',String(name||''));
-      const {data:clientRows,error:clientLookupError}=await clientQuery;
-      if(clientLookupError)throw clientLookupError;
-      const clientIds=(clientRows||[]).map(r=>r.id).filter(Boolean);
-      const policyCloudIds=[...new Set((localPolicyRefs||[]).map(r=>r.cloudId).filter(Boolean))];
-      if(clientIds.length){
-        const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).in('client_id',clientIds);
-        if(error)throw error;
-      }
-      if(policyCloudIds.length){
-        const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).in('id',policyCloudIds);
-        if(error)throw error;
-      }
-      // Also remove legacy policies whose client link was missing but whose source reference matches a local policy.
-      const sourceRefs=[...new Set((localPolicyRefs||[]).map(r=>r.id).filter(Boolean))];
-      for(const ref of sourceRefs){
-        const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('source_reference',ref);
-        if(error)throw error;
-      }
-      let deleteClientQuery=sb.from('clients').delete().eq('user_id',cloudUser.id);
-      deleteClientQuery=ic?deleteClientQuery.eq('ic',String(ic)):deleteClientQuery.eq('name',String(name||''));
-      const {error:deleteClientError}=await deleteClientQuery;
-      if(deleteClientError)throw deleteClientError;
-    }finally{cloudSyncing=false;}
-  }
-  async function cloudDeletePolicy(policyId, cloudId){
-    if(!cloudUser||cloudLoading)throw new Error('Cloud is not ready. Please try again.');
-    clearTimeout(cloudTimer);cloudSyncing=true;
-    try{
-      if(cloudId){
-        const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('id',cloudId);
-        if(error)throw error;
-      }
-      const ref=String(policyId??'');
-      if(ref){
-        const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('source_reference',ref);
-        if(error)throw error;
-      }
-    }finally{cloudSyncing=false;}
-  }
-  window.cloudDeleteClient=cloudDeleteClient;
-  window.cloudDeletePolicy=cloudDeletePolicy;
-
   async function cloudUploadAll(){
     if(!cloudUser||cloudLoading)return;
     cloudSyncing=true;cloudSyncStatus('Syncing…','sync');
@@ -2888,4 +2822,47 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
 })();
 </script>
 
+
+<style id="v28-pipeline-and-modal-fix">
+/* V2.8.1 — Pipeline Overview matches reference layout + modal actions stay tappable */
+.pipelineOverviewWrap{
+  padding:20px 22px 22px!important;
+  border-radius:24px!important;
+  background:rgba(255,255,255,.52)!important;
+  border:1px solid rgba(255,255,255,.92)!important;
+  box-shadow:0 16px 42px rgba(45,62,90,.075),inset 0 1px 0 rgba(255,255,255,.95)!important;
+  backdrop-filter:blur(28px) saturate(150%)!important;
+  -webkit-backdrop-filter:blur(28px) saturate(150%)!important;
+}
+.pipelineOverviewHead{display:flex!important;align-items:baseline!important;justify-content:space-between!important;margin:0 0 6px!important}
+.pipelineOverviewHead h3{margin:0!important;font-size:22px!important;font-weight:850!important;letter-spacing:-.035em!important}
+.pipelineOverviewSub{font-size:14px!important;color:#6f7682!important;font-weight:500!important;white-space:nowrap}
+.pipelineOverview{grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:10px!important;margin-top:14px!important}
+.pipelineOverview .pipeMini:nth-child(1),.pipelineOverview .pipeMini:nth-child(2),.pipelineOverview .pipeMini:nth-child(3){grid-column:span 2!important}
+.pipelineOverview .pipeMini:nth-child(4){grid-column:1/span 3!important}
+.pipelineOverview .pipeMini:nth-child(5){grid-column:4/span 3!important}
+.pipelineOverview .pipeMini{min-height:92px!important;padding:14px 18px!important;border-radius:22px!important}
+.pipelineOverview .pipeIcon{width:48px!important;height:48px!important;flex-basis:48px!important;border-radius:16px!important;font-size:22px!important}
+.pipelineOverview .pipeMini .n{font-size:28px!important;line-height:1!important}
+.pipelineOverview .pipeMini .s{font-size:14px!important;line-height:1.25!important;margin-top:7px!important;color:#69717d!important}
+.modal{z-index:20000!important}
+.modalBox{padding-bottom:28px!important}
+.newClientActions{position:relative!important;z-index:5!important;padding-bottom:6px!important}
+@media(max-width:760px){
+  .pipelineOverviewWrap{padding:16px 14px 17px!important;border-radius:22px!important}
+  .pipelineOverviewHead h3{font-size:20px!important}
+  .pipelineOverviewSub{font-size:13px!important}
+  .pipelineOverview{gap:8px!important}
+  .pipelineOverview .pipeMini{min-height:84px!important;padding:11px 10px!important;gap:7px!important}
+  .pipelineOverview .pipeIcon{width:38px!important;height:38px!important;flex-basis:38px!important;border-radius:13px!important;font-size:18px!important}
+  .pipelineOverview .pipeMini .n{font-size:23px!important}
+  .pipelineOverview .pipeMini .s{font-size:11px!important;margin-top:5px!important}
+}
+
+/* V2.8.2 pipeline tap + delete client */
+.pipelineViewAllBtn{border:0!important;background:transparent!important;padding:0!important;color:#6f7682!important;font:inherit!important;cursor:pointer!important;touch-action:manipulation!important}
+.pipelineOverview .pipeMini{cursor:pointer!important;touch-action:manipulation!important;-webkit-tap-highlight-color:transparent}
+.deleteClientBtn{color:#dc3b3b!important;border-color:rgba(220,59,59,.22)!important;background:rgba(255,238,238,.72)!important}
+@media(max-width:760px){.newClientActions{position:relative!important;z-index:20!important;padding-bottom:max(10px,env(safe-area-inset-bottom))!important}.deleteClientBtn{font-size:12px!important}}
+</style>
 </body></html>
