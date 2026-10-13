@@ -2218,7 +2218,8 @@ function income(){
  let period=window.incomePeriod||'year',active=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'),now=new Date(),from=new Date(now.getFullYear(),now.getMonth(),1);
  // Keep the selector state on window so iOS Safari's inline change handler and render() use the same value.
  const rangeMonths={quarter:3,halfyear:6,year:12,'3y':36,'5y':60,'7y':84,'10y':120};
- if(period==='quarter')from=new Date(now.getFullYear(),now.getMonth()-2,1);
+ if(period==='ytd')from=new Date(now.getFullYear(),0,1);
+ else if(period==='quarter')from=new Date(now.getFullYear(),now.getMonth()-2,1);
  else if(period==='halfyear')from=new Date(now.getFullYear(),now.getMonth()-5,1);
  else if(period==='year')from=new Date(now.getFullYear(),now.getMonth()-11,1);
  else if(rangeMonths[period])from=new Date(now.getFullYear(),now.getMonth()-rangeMonths[period]+1,1);
@@ -2229,14 +2230,15 @@ function income(){
  let increment=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((sum,c)=>sum+monthlyComm({...c,forceInforceCommissionStart:true},currentKey+'-01'),0);
  let clients=clientRecords().length,existingActive=active.filter(c=>c.kind==='Existing Policy').length;
  const max=Math.max(...months.map(x=>x.v),1),rangeCount=months.length;
- // Show monthly comparisons for up to 3 years; suppress most tick labels on longer ranges to prevent crowding.
- const labelEvery=rangeCount<=6?1:rangeCount<=12?2:rangeCount<=36?3:12;
+ // Keep chart bars clean: values are shown in the summary only after a month is selected.
  const chartMonths=months;
- const bars=chartMonths.map((x,i)=>`<button class="incomeBarItem" title="${x.key}: ${money(x.v)}" aria-label="${x.key}: ${money(x.v)}" onclick="incomeMonthBreakdown('${x.key}')"><span class="incomeBarValue ${i%labelEvery===0||i===chartMonths.length-1?'incomeBarLabeled':''}">${money(x.v)}</span><span class="incomeBarTrack"><i class="incomeBarFill" style="height:${Math.max(3,x.v/max*100)}%"></i></span><span class="incomeBarMonth">${(i%labelEvery===0||i===chartMonths.length-1)?(rangeCount>36?x.key.slice(0,4):x.key.slice(5)):' '}</span></button>`).join('');
- const options=[['quarter','3 Months'],['halfyear','6 Months'],['year','1 Year'],['3y','3 Years'],['5y','5 Years'],['7y','7 Years'],['10y','10 Years']];
+ const selectedKey=chartMonths.some(x=>x.key===window.incomeSelectedMonth)?window.incomeSelectedMonth:(chartMonths.at(-1)?.key||'');
+ const selectedMonth=chartMonths.find(x=>x.key===selectedKey)||chartMonths.at(-1)||{key:'',v:0};
+ const bars=chartMonths.map((x,i)=>`<button class="incomeBarItem ${x.key===selectedMonth.key?'incomeBarSelected':''}" title="${x.key}" aria-label="${x.key}, ${money(x.v)}. Tap to select month and view policy details" onclick="incomeSelectMonth('${x.key}')"><span class="incomeBarTrack"><i class="incomeBarFill" style="height:${Math.max(3,x.v/max*100)}%"></i></span><span class="incomeBarMonth">${rangeCount>36?(x.key.endsWith('-01')?x.key.slice(0,4):''):x.key.slice(5)}</span></button>`).join('');
+ const options=[['ytd','This Year'],['quarter','3 Months'],['halfyear','6 Months'],['year','1 Year'],['3y','3 Years'],['5y','5 Years'],['7y','7 Years'],['10y','10 Years']];
  const first=months[0]?.v||0,last=months[months.length-1]?.v||0,delta=last-first,pct=first?((delta/first)*100):null;
- document.getElementById('income').innerHTML=`<div class="row"><div class="section">Income</div><select class="incomePeriodSelect" aria-label="Income chart time range" onchange="window.incomePeriod=this.value;render()">${options.map(([value,label])=>`<option value="${value}" ${period===value?'selected':''}>${label}</option>`).join('')}</select></div>
- <div class="card incomeChartCard"><div class="incomeChartHead"><div><div class="label">Estimated Monthly Income</div><div class="small">Compare your estimated recurring commission over time. Tap a bar for policy details.</div></div><div class="incomeChartLegend"><i></i> Monthly</div></div><div class="incomeChartSummary"><div><span class="small">Latest month</span><strong>${money(last)}</strong></div><div><span class="small">Change across period</span><strong class="${delta>=0?'incomePositive':'incomeNegative'}">${delta>=0?'+':'−'}${money(Math.abs(delta))}${pct===null?'':` <small>(${delta>=0?'+':''}${pct.toFixed(1)}%)</small>`}</strong></div></div><div class="incomeChartScroll"><div class="incomeChartGrid">${bars||'<div class="empty">No commission data.</div>'}</div></div><div class="incomeChartFoot">${chartMonths.length} monthly records · Values appear when you tap or focus a bar</div></div>
+ document.getElementById('income').innerHTML=`<div class="row"><div class="section">Income</div><select class="incomePeriodSelect" aria-label="Income chart time range" onchange="window.incomePeriod=this.value;window.incomeSelectedMonth='';render()">${options.map(([value,label])=>`<option value="${value}" ${period===value?'selected':''}>${label}</option>`).join('')}</select></div>
+ <div class="card incomeChartCard"><div class="incomeChartHead"><div><div class="label">Estimated Monthly Income</div><div class="small">Compare your estimated recurring commission over time. Tap a bar to select a month and view policy details.</div></div><div class="incomeChartLegend"><i></i> Monthly</div></div><div class="incomeChartSummary"><div><span class="small">${selectedMonth.key||'Selected month'}</span><strong class="incomeSelectedValue">${money(selectedMonth.v)}</strong></div><div><span class="small">Change across period</span><strong class="${delta>=0?'incomePositive':'incomeNegative'}">${delta>=0?'+':'−'}${money(Math.abs(delta))}${pct===null?'':` <small>(${delta>=0?'+':''}${pct.toFixed(1)}%)</small>`}</strong></div></div><div class="incomeChartScroll"><div class="incomeChartGrid">${bars||'<div class="empty">No commission data.</div>'}</div></div><div class="incomeChartFoot">${chartMonths.length} monthly records · Tap a bar to show its value above</div></div>
  <div class="section">Estimated Income</div><div class="grid">
  <div class="card" onclick="incomeBreakdown('increment')"><div class="label">This Month Increment</div><div class="metric">${money(increment)}</div><div class="small">New production in ${currentKey} based on Inforce Date · Tap for breakdown</div></div>
  <div class="card" onclick="incomeBreakdown('utd')"><div class="label">Estimated UTD Monthly Income</div><div class="metric">${money(utd)}</div><div class="small">All active policies based on Commencement Date · Tap for breakdown</div></div>
@@ -2245,6 +2247,8 @@ function income(){
  </div>`
 }
 window.incomePeriod=window.incomePeriod||'year';
+window.incomeSelectedMonth=window.incomeSelectedMonth||'';
+function incomeSelectMonth(key){window.incomeSelectedMonth=key;const label=document.querySelector('.incomeChartSummary>div:first-child .small');const value=document.querySelector('.incomeSelectedValue');if(label)label.textContent=key;if(value){const d=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce');value.textContent=money(d.reduce((sum,c)=>sum+monthlyComm(c,key+'-01'),0));}document.querySelectorAll('.incomeBarItem').forEach(el=>el.classList.toggle('incomeBarSelected',el.getAttribute('aria-label')?.startsWith(key+',')))}
 function incomeBreakdown(type){
  let date=monthKey()+'-01', rows=[];
  if(type==='increment') rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(monthKey())).map(c=>({c,v:monthlyComm({...c,forceInforceCommissionStart:true},date)})).filter(x=>x.v>0);
@@ -2739,6 +2743,17 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
 .incomeChartFoot{font-size:11px;color:var(--muted);margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 @media(max-width:600px){.incomeChartCard{padding:16px 12px 12px}.incomeChartHead .small{max-width:100%;line-height:1.45}.incomeChartLegend{display:none}.incomeChartGrid{gap:7px;height:195px}.incomeBarItem{flex-basis:39px;width:39px;min-width:39px}.incomeBarTrack{height:145px}.incomeBarValue{font-size:9px}.incomeChartSummary{gap:8px;padding:12px}.incomePeriodSelect{min-width:118px;font-size:14px}}
 
+
+/* Final income chart polish: no overlapping labels; selected month highlighted. */
+.incomeBarValue{display:none!important}
+.incomeBarItem{outline:none!important}
+.incomeBarItem.incomeBarSelected .incomeBarFill{background:linear-gradient(180deg,#4ade80,#16a34a)!important;box-shadow:0 0 0 2px rgba(34,197,94,.14)}
+.incomeBarItem.incomeBarSelected .incomeBarMonth{color:#15803d;font-weight:800}
+.incomeSelectedValue{display:block;color:#16a34a!important;font-size:clamp(24px,6vw,32px)!important;font-weight:850!important;line-height:1.2;margin-top:2px}
+.incomeChartSummary>div:first-child{padding:2px 0}
+.incomeChartSummary>div:first-child .small{font-weight:700}
+.incomeChartGrid{padding-top:4px}
+@media(max-width:600px){.incomeSelectedValue{font-size:26px!important}.incomeChartSummary{grid-template-columns:1fr 1fr;gap:10px}.incomeChartSummary>div{min-width:0}}
 </style>
 <style id="notification-ui">
 .notifToggle{border:0;border-radius:999px;padding:7px 11px;font-size:11px;font-weight:800;background:rgba(120,120,128,.12);color:#6b7280;min-width:44px}.notifToggle.on{background:#34c759;color:#fff}.pushHint{font-size:12px;color:#6b7280}
