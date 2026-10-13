@@ -1696,7 +1696,7 @@ function home(){const currentKey=monthKey(),productionRows=db.cases.filter(c=>c.
 function homeProductionBreakdown(type){
   // Always use the month selected on Home, not the device's actual current month.
   const selectedDate = typeof selectedHomeDate === 'function' ? selectedHomeDate() : new Date();
-  const view=window.homeTPCView||'month', period=homeTPCPeriodInfo(view,selectedDate), selectedKey=window.homeMonthKey||monthKey(selectedDate), selectedLabel=period.label;
+  const view=window.homeTPCView||'month', period=homeTPCPeriodInfo(view,selectedDate), selectedLabel=period.label;
   const rows=db.cases.filter(c=>c.inforce&&c.inforce>=period.start&&c.inforce<=period.end&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce');
   const totalTPC = rows.reduce((s,c)=>s+tpc(c),0);
   const caseCount = Math.floor(totalTPC/1800);
@@ -2589,14 +2589,16 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
  function homeTPCPeriodInfo(view,now){
    const y=now.getFullYear(),m=now.getMonth(),q=Math.floor(m/3)+1,h=m<6?1:2;
    if(view==='quarter') {const qq=window.homeTPCQuarter||q, yy=window.homeTPCYear||y, start=new Date(yy,(qq-1)*3,1),end=new Date(yy,qq*3,0);const ps=new Date(yy,(qq-2)*3,1),pe=new Date(yy,(qq-1)*3,0);return {label:`Q${qq} ${yy}`,start:iso(start),end:iso(end),prevStart:iso(ps),prevEnd:iso(pe)}}
-   if(view==='half') {const hh=window.homeTPCHalf||h,yy=window.homeTPCYear||y,start=new Date(yy,hh===1?0:6,1),end=new Date(yy,hh===1?6:12,0),ps=new Date(yy-1,hh===1?6:0,1),pe=new Date(yy-1,hh===1?12:6,0);return {label:`${hh===1?'1H':'2H'} ${yy}`,start:iso(start),end:iso(end),prevStart:iso(ps),prevEnd:iso(pe)}}
+   if(view==='half') {const hh=window.homeTPCHalf||h,yy=window.homeTPCYear||y,start=new Date(yy,hh===1?0:6,1),end=new Date(yy,hh===1?6:12,0),ps=new Date(yy-1,hh===1?0:6,1),pe=new Date(yy-1,hh===1?6:12,0);return {label:`${hh===1?'1H':'2H'} ${yy}`,start:iso(start),end:iso(end),prevStart:iso(ps),prevEnd:iso(pe)}}
+   if(view==='year'){const yy=window.homeTPCYear||y,start=new Date(yy,0,1),end=new Date(yy,12,0),ps=new Date(yy-1,0,1),pe=new Date(yy,0,0);return {label:`${yy}`,start:iso(start),end:iso(end),prevStart:iso(ps),prevEnd:iso(pe)}}
    const start=new Date(now.getFullYear(),now.getMonth(),1),end=new Date(now.getFullYear(),now.getMonth()+1,0),prev=new Date(now.getFullYear(),now.getMonth()-1,1),prevEnd=new Date(now.getFullYear(),now.getMonth(),0);return {label:monthLabel(now),start:iso(start),end:iso(end),prevStart:iso(prev),prevEnd:iso(prevEnd)}
  }
  function homeTPCBars(view,now){
-   const count=view==='month'?8:view==='quarter'?8:6, out=[];
+   const count=view==='month'?8:view==='quarter'?8:view==='half'?6:5, out=[];
    for(let i=count-1;i>=0;i--){let start,end,label,key;
      if(view==='quarter'){let anchorQ=window.homeTPCQuarter||Math.floor(now.getMonth()/3)+1,anchorY=window.homeTPCYear||now.getFullYear(),d=new Date(anchorY,(anchorQ-1)*3-i*3,1);start=new Date(d.getFullYear(),d.getMonth(),1);end=new Date(d.getFullYear(),d.getMonth()+3,0);label=`Q${Math.floor(d.getMonth()/3)+1}`;key=`${d.getFullYear()}-Q${Math.floor(d.getMonth()/3)+1}`;}
-     else if(view==='half'){let hh=window.homeTPCHalf|| (now.getMonth()<6?1:2),yy=window.homeTPCYear||now.getFullYear(),d=new Date(yy,(hh===1?0:6)-i*6,1);start=new Date(d.getFullYear(),d.getMonth(),1);end=new Date(d.getFullYear(),d.getMonth()+6,0);label=`${d.getMonth()<6?'1H':'2H'}`;key=`${d.getFullYear()}-${label}`;}
+     else if(view==='half'){let hh=window.homeTPCHalf|| (now.getMonth()<6?1:2),yy=window.homeTPCYear||now.getFullYear(),d=new Date(yy,(hh===1?0:6)-i*6,1);start=new Date(d.getFullYear(),d.getMonth(),1);end=new Date(d.getFullYear(),d.getMonth()+6,0);label=`${d.getMonth()<6?'1H':'2H'} ${d.getFullYear()}`;key=`${d.getFullYear()}-${label}`;}
+     else if(view==='year'){let yy=(window.homeTPCYear||now.getFullYear())-((count-1)-i);start=new Date(yy,0,1);end=new Date(yy+1,0,0);label=String(yy);key=String(yy);}
      else {start=new Date(now.getFullYear(),now.getMonth()-i,1);end=new Date(start.getFullYear(),start.getMonth()+1,0);label=start.toLocaleDateString('en-MY',{month:'short'});key=monthKey(start);}
      const value=db.cases.filter(c=>c.inforce&&c.inforce>=iso(start)&&c.inforce<=iso(end)&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce').reduce((sum,c)=>sum+tpc(c),0);out.push({key,label,value});
    }return out;
@@ -2605,9 +2607,10 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
    const y=window.homeTPCYear||now.getFullYear(),q=window.homeTPCQuarter||Math.floor(now.getMonth()/3)+1,h=window.homeTPCHalf||(now.getMonth()<6?1:2),years=Array.from({length:9},(_,i)=>now.getFullYear()-5+i);
    if(view==='quarter')return `<select aria-label="Quarter" onchange="window.homeTPCQuarter=+this.value;render()">${[1,2,3,4].map(n=>`<option value="${n}" ${q===n?'selected':''}>Q${n}</option>`).join('')}</select><select aria-label="Year" onchange="window.homeTPCYear=+this.value;render()">${years.map(n=>`<option ${n===y?'selected':''}>${n}</option>`).join('')}</select>`;
    if(view==='half')return `<select aria-label="Half year" onchange="window.homeTPCHalf=+this.value;render()"><option value="1" ${h===1?'selected':''}>1H</option><option value="2" ${h===2?'selected':''}>2H</option></select><select aria-label="Year" onchange="window.homeTPCYear=+this.value;render()">${years.map(n=>`<option ${n===y?'selected':''}>${n}</option>`).join('')}</select>`;
+   if(view==='year')return `<select aria-label="Year" onchange="window.homeTPCYear=+this.value;render()">${years.map(n=>`<option ${n===y?'selected':''}>${n}</option>`).join('')}</select>`;
    return `<button class="homeMonthButton" onclick="openHomeMonthPicker()">▣ ${monthLabel(now)} <span style="color:var(--ios-muted)">⌄</span></button>`;
  }
- function setHomeTPCView(v){window.homeTPCView=v;const d=selectedHomeDate();window.homeTPCYear=window.homeTPCYear||d.getFullYear();window.homeTPCQuarter=window.homeTPCQuarter||Math.floor(d.getMonth()/3)+1;window.homeTPCHalf=window.homeTPCHalf||(d.getMonth()<6?1:2);render()}
+ function setHomeTPCView(v){const d=selectedHomeDate();window.homeTPCView=v;window.homeTPCYear=d.getFullYear();window.homeTPCQuarter=Math.floor(d.getMonth()/3)+1;window.homeTPCHalf=d.getMonth()<6?1:2;render()}
  function iosHome(){
    const now=selectedHomeDate(), key=window.homeMonthKey, view=window.homeTPCView||'month';
    const period=homeTPCPeriodInfo(view,now);
@@ -2628,9 +2631,9 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
    const max=Math.max(...bars.map(x=>x.value),1);
    document.getElementById('home').innerHTML=`
     <div class="iosHomeHead"><div class="iosGreeting">Good morning,</div><div class="iosName">Jack 👋</div>
-      <div class="iosDateRow"><div class="homeTPCControls"><select aria-label="TPC view" onchange="setHomeTPCView(this.value)"><option value="month" ${view==='month'?'selected':''}>Monthly</option><option value="quarter" ${view==='quarter'?'selected':''}>Quarterly</option><option value="half" ${view==='half'?'selected':''}>Half-Yearly</option></select>${homeTPCPeriodPicker(view,now)}</div><div class="iosProfile">JL</div></div></div>
-    <div class="card heroTPC breakdownTap" data-home-tpc-tap="1" role="button" tabindex="0" onclick="homeProductionBreakdown('TPC')" aria-label="Open ${period.label} TPC breakdown">
-      <div class="heroTop"><div><div class="heroTitle">${view==='month'?'Monthly TPC':view==='quarter'?'Quarterly TPC':'Half-Yearly TPC'}</div><div class="heroValue">${money(tpcNow)}</div></div><div class="growth" aria-label="${tpcPrev>0?(((tpcNow-tpcPrev)/tpcPrev)*100).toFixed(1)+'% vs previous period':'No previous-period baseline'}">${tpcPrev>0?fmtPct(tpcNow,tpcPrev):(tpcNow>0?'New Production':'—')}</div></div>
+      <div class="iosDateRow"><div class="homeTPCControls"><select aria-label="TPC view" onchange="setHomeTPCView(this.value)"><option value="month" ${view==='month'?'selected':''}>Monthly</option><option value="quarter" ${view==='quarter'?'selected':''}>Quarterly</option><option value="half" ${view==='half'?'selected':''}>Half-Yearly</option><option value="year" ${view==='year'?'selected':''}>Whole Year</option></select>${homeTPCPeriodPicker(view,now)}</div><div class="iosProfile">JL</div></div></div>
+    <div class="card heroTPC breakdownTap" data-home-tpc-tap="1" role="button" tabindex="0" aria-label="Open ${period.label} TPC breakdown">
+      <div class="heroTop"><div><div class="heroTitle">${view==='month'?'Monthly TPC':view==='quarter'?'Quarterly TPC':view==='half'?'Half-Yearly TPC':'Yearly TPC'}</div><div class="heroValue">${money(tpcNow)}</div></div><div class="growth" aria-label="${tpcPrev>0?(((tpcNow-tpcPrev)/tpcPrev)*100).toFixed(1)+'% vs previous period':'No previous-period baseline'}">${tpcPrev>0?fmtPct(tpcNow,tpcPrev):(tpcNow>0?'New Production':'—')}</div></div>
       <div class="heroBars" aria-label="TPC trend: ${view}">${bars.map((v,i)=>`<i title="${v.label}: ${money(v.value)}" aria-label="${v.label}: ${money(v.value)}" style="height:${Math.max(5,(v.value/max)*100)}%;${i===bars.length-1?'background:var(--ios-blue)':''}"></i>`).join('')}</div>
       <div class="heroBarLabels">${bars.map(v=>`<span>${v.label}</span>`).join('')}</div>
       <div class="small">${period.label} production · Tap to view breakdown</div></div>
@@ -3432,7 +3435,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
 <style id="home-tpc-tap-fix">
 .heroTPC[data-home-tpc-tap="1"]{cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:rgba(0,122,255,.12);user-select:none}
 .heroTPC[data-home-tpc-tap="1"]:active{transform:scale(.995)}
-.heroTPC[data-home-tpc-tap="1"] .heroBars,.heroTPC[data-home-tpc-tap="1"] .heroBars *{pointer-events:none}
+.heroTPC[data-home-tpc-tap="1"] .heroBars,.heroTPC[data-home-tpc-tap="1"] .heroBars *{pointer-events:none}.heroTPC[data-home-tpc-tap="1"] *{pointer-events:none}.heroTPC[data-home-tpc-tap="1"]{position:relative;z-index:1}
 .heroBarLabels{display:flex;gap:5px;margin-top:4px;color:var(--ios-muted);font-size:10px;text-align:center}
 .heroBarLabels span{flex:1;min-width:0}
 </style>
@@ -3443,4 +3446,23 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     if(card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(typeof window.homeProductionBreakdown==='function')window.homeProductionBreakdown('TPC');}
   },true);
 })();
-</script></body></html>
+</script>
+<script id="home-tpc-period-interaction-fix">
+(function(){
+  let lastTouch=0;
+  function openTPC(e){
+    const card=e.target&&e.target.closest&&e.target.closest('[data-home-tpc-tap="1"]');
+    if(!card)return;
+    if(e.type==='click' && Date.now()-lastTouch<800)return;
+    if(e.type==='touchend')lastTouch=Date.now();
+    if(e.cancelable)e.preventDefault();
+    e.stopPropagation();
+    try{if(typeof window.homeProductionBreakdown==='function')window.homeProductionBreakdown('TPC');}
+    catch(err){console.error('TPC breakdown failed',err);}
+  }
+  document.addEventListener('touchend',openTPC,{capture:true,passive:false});
+  document.addEventListener('click',openTPC,true);
+  document.addEventListener('keydown',function(e){const card=e.target&&e.target.closest&&e.target.closest('[data-home-tpc-tap="1"]');if(card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();window.homeProductionBreakdown('TPC');}},true);
+})();
+</script>
+</body></html>
