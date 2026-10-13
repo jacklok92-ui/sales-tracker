@@ -1694,9 +1694,12 @@ function coachAnswer(q){
 function askCoach(){const input=document.getElementById('coachQuestion'),q=input?.value.trim();if(!q)return;modal('AI Coach',`<div class="small" style="margin-bottom:8px">${q}</div><div class="card aiCoach"><b>Coach response</b><div style="margin-top:8px;line-height:1.6">${coachAnswer(q)}</div></div>`,true);input.value=''}
 function home(){const currentKey=monthKey(),productionRows=db.cases.filter(c=>c.inforce?.startsWith(currentKey)&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce'),productionTPC=productionRows.reduce((s,c)=>s+tpc(c),0),productionCases=Math.floor(productionTPC/1800),activeExisting=db.cases.filter(c=>c.kind==='Existing Policy'&&normalizeStatus(c.status)==='Inforce'),existingIncome=activeExisting.reduce((s,c)=>s+monthlyComm(c,currentKey+'-01'),0),ongoing=db.contests.filter(x=>x.start<=iso(new Date())&&x.end>=iso(new Date()));document.getElementById('home').innerHTML=`<div class="section">${L('production')}</div><div class="grid"><div class="card" role="button" tabindex="0" onclick="homeProductionBreakdown('TPC')" onkeydown="if(event.key==='Enter'||event.key===' ')homeProductionBreakdown('TPC',productionRows)"><div class="label">TPC</div><div class="metric">${money(productionTPC)}</div><div class="small">Current-month production · Tap to view breakdown</div></div><div class="card" role="button" tabindex="0" onclick="homeProductionBreakdown('Cases')" onkeydown="if(event.key==='Enter'||event.key===' ')homeProductionBreakdown('Cases',productionRows)"><div class="label">Cases</div><div class="metric">${productionCases}</div><div class="small">RM1,800 TPC = 1 case · Tap to view breakdown</div></div></div><div class="section">Vital Behaviour Tracker</div><div class="small" style="margin:-4px 0 10px">Actions are captured automatically when your pipeline moves forward.</div>${behaviourTrackerHome()}<div class="section">${L('existing')}</div><div class="grid"><div class="card" onclick="homeExistingBreakdown()"><div class="label">${L('activeImported')}</div><div class="metric">${activeExisting.length}</div><div class="small">All active imported policies · Tap to view</div></div><div class="card" onclick="homeExistingIncomeBreakdown()"><div class="label">${L('estimatedMonthly')}</div><div class="metric">${money(existingIncome)}</div><div class="small">Based on Inforce Date & commission cycle · Tap to view</div></div></div><div class="section">${L('ongoing')}</div><div class="list">${ongoing.map(x=>`<div class="card"><div class="row"><b>${x.name}</b><span class="pill yellow">${x.metric}</span></div><div class="small">${x.start} → ${x.end}</div><div class="metric">${contestValue(x)}</div></div>`).join('')||'<div class="empty">No ongoing contests.</div>'}</div>`}
 function homeProductionBreakdown(type){
-  // Always use the selected Home period, not the device's actual current month.
-  const selectedDate = typeof selectedHomeDate === 'function' ? selectedHomeDate() : new Date();
-  const view=window.homeTPCView||'month', period=homeTPCPeriodInfo(view,selectedDate), selectedLabel=period.label;
+  // Use the same selected Home period as the chart. These helpers live inside
+  // the Home UI closure, so access their explicitly exported window references.
+  const selectedDate = typeof window.selectedHomeDate === 'function' ? window.selectedHomeDate() : new Date();
+  const view=window.homeTPCView||'month';
+  if(typeof window.homeTPCPeriodInfo !== 'function') throw new Error('Home period helper is unavailable');
+  const period=window.homeTPCPeriodInfo(view,selectedDate), selectedLabel=period.label;
   const rows=db.cases.filter(c=>c.inforce&&c.inforce>=period.start&&c.inforce<=period.end&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce');
   const totalTPC = rows.reduce((s,c)=>s+tpc(c),0);
   const caseCount = Math.floor(totalTPC/1800);
@@ -1726,7 +1729,7 @@ window.tapHomeTPCBreakdown=function(e){
   window.homeTPCHandledAt=now;
   if(e&&e.cancelable)e.preventDefault();
   if(e&&e.stopPropagation)e.stopPropagation();
-  try{window.homeProductionBreakdown('TPC');}catch(err){console.error('TPC breakdown failed',err);alert('Unable to open TPC breakdown. Please refresh and try again.');}
+  try{window.homeProductionBreakdown('TPC');}catch(err){console.error('TPC breakdown failed',err);alert('Unable to open TPC breakdown: '+(err&&err.message?err.message:'unknown error')+'. Please refresh and try again.');}
 };
 function homeExistingBreakdown(){
   const rows=db.cases.filter(c=>c.kind==='Existing Policy'&&normalizeStatus(c.status)==='Inforce');
@@ -2572,6 +2575,7 @@ async function resetData(){
  let homeMonthKey=window.homeMonthKey||monthKey(new Date());
  window.homeMonthKey=homeMonthKey;
  function selectedHomeDate(){const [y,m]=String(window.homeMonthKey||monthKey()).split('-').map(Number);return new Date(y,m-1,1)}
+ window.selectedHomeDate=selectedHomeDate;
  function openHomeMonthPicker(){
    const d=selectedHomeDate(), years=[];
    for(let y=new Date().getFullYear()-5;y<=new Date().getFullYear()+2;y++)years.push(y);
@@ -2603,6 +2607,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
    if(view==='year'){const yy=window.homeTPCYear||y,start=new Date(yy,0,1),end=new Date(yy,12,0),ps=new Date(yy-1,0,1),pe=new Date(yy,0,0);return {label:`${yy}`,start:iso(start),end:iso(end),prevStart:iso(ps),prevEnd:iso(pe)}}
    const start=new Date(now.getFullYear(),now.getMonth(),1),end=new Date(now.getFullYear(),now.getMonth()+1,0),prev=new Date(now.getFullYear(),now.getMonth()-1,1),prevEnd=new Date(now.getFullYear(),now.getMonth(),0);return {label:monthLabel(now),start:iso(start),end:iso(end),prevStart:iso(prev),prevEnd:iso(prevEnd)}
  }
+ window.homeTPCPeriodInfo=homeTPCPeriodInfo;
  function homeTPCBars(view,now){
    const year=Number(window.homeTPCYear||now.getFullYear());
    const count=view==='month'?8:view==='quarter'?4:view==='half'?2:12, out=[];
