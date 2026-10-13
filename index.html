@@ -543,9 +543,14 @@ button.secondary{background:rgba(255,255,255,.72);color:var(--ios-text);border:1
 button.danger{background:rgba(255,59,48,.10);color:#d72d20;border:0;border-radius:13px;padding:10px 14px;font-weight:650}
 input,select,textarea{background:rgba(255,255,255,.76);color:var(--ios-text);border:1px solid rgba(60,60,67,.13);border-radius:12px;padding:11px 12px;box-shadow:none}
 /* Prevent native iOS date controls from extending beyond the modal/card. */
-.modalBox .field{min-width:0;width:100%;max-width:100%;}
-.modalBox input[type="date"]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;-webkit-appearance:none;appearance:none;padding-left:12px;padding-right:12px;font-size:16px;}
-.modalBox .formgrid,.modalBox .newClientSection,.modalBox .caseDetailGrid{min-width:0;max-width:100%;}
+/* iPhone Safari: keep every modal descendant inside the modal width. */
+.modalBox,.modalBox *{box-sizing:border-box;min-width:0;}
+.modalBox{width:100%;max-width:760px;overflow-x:hidden;}
+.modalBox .newClientForm,.modalBox .formgrid,.modalBox .newClientSection,.modalBox .caseDetailGrid,.modalBox .field{width:100%;min-width:0;max-width:100%;}
+.modalBox input,.modalBox select,.modalBox textarea{width:100%;min-width:0;max-width:100%;}
+.modalBox input[type="date"]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;-webkit-appearance:none;appearance:none;padding:11px 10px;font-size:16px;}
+.modalBox input[type="date"]::-webkit-date-and-time-value{text-align:center;margin:0;}
+.modalBox .formgrid>*{min-width:0;}
 
 input:focus,select:focus,textarea:focus{border-color:rgba(0,122,255,.5);box-shadow:0 0 0 3px rgba(0,122,255,.10)}
 input::placeholder,textarea::placeholder{color:#8e8e93}.field label{color:var(--ios-secondary);font-size:11px;letter-spacing:0;text-transform:none}
@@ -1277,7 +1282,7 @@ function caseForm(mode,ic='',reduceId=''){
  </div><div class="actions newClientActions">${mode==='edit'?`<button type="button" class="danger deleteClientBtn" onclick="deleteClient('${c.ic||''}')">Delete Client</button>`:''}<button type="button" class="secondary" onclick="closeModal()">Cancel</button><button class="primary newClientSave"><span>＋</span> Save ${mode==='edit'?'Changes':'New Case'} <b>→</b></button></div></form>`);
  let f=document.querySelector('.modal form'),p=f.querySelector('#premium'),pm=f.querySelector('#payMode'),t=f.querySelector('#tpc'),st=f.querySelector('#caseStatus'),df=f.querySelector('#inforceDateField'),inf=f.querySelector('#caseInforce');
  function calc(){let x=+p.value||0;t.value=(pm.value==='monthly'?x*12:pm.value==='quarterly'?x*4:pm.value==='halfyearly'?x*2:x).toFixed(2)}
- const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement');function syncInforce(){const yes=normalizeStatus(st.value)==='Inforce';df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());comm.value=calculatedCommencement(inf.value);comm.dataset.auto='1'} inf.addEventListener('change',()=>{comm.value=calculatedCommencement(inf.value);comm.dataset.auto='1'});
+ const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement');function updateCommencement(){const next=calculatedCommencement(inf.value);comm.value=next;comm.setAttribute('value',next);comm.dataset.auto='1'}function syncInforce(){const yes=normalizeStatus(st.value)==='Inforce';df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());updateCommencement()}inf.addEventListener('input',updateCommencement);inf.addEventListener('change',updateCommencement);inf.addEventListener('blur',updateCommencement);
  p.oninput=calc;pm.onchange=calc;st.onchange=syncInforce;calc();syncInforce()
 }
 
