@@ -542,6 +542,11 @@ button.primary{background:var(--ios-blue);color:#fff;border:0;border-radius:13px
 button.secondary{background:rgba(255,255,255,.72);color:var(--ios-text);border:1px solid rgba(60,60,67,.12);border-radius:13px;padding:10px 14px;font-weight:650;box-shadow:none}
 button.danger{background:rgba(255,59,48,.10);color:#d72d20;border:0;border-radius:13px;padding:10px 14px;font-weight:650}
 input,select,textarea{background:rgba(255,255,255,.76);color:var(--ios-text);border:1px solid rgba(60,60,67,.13);border-radius:12px;padding:11px 12px;box-shadow:none}
+/* Prevent native iOS date controls from extending beyond the modal/card. */
+.modalBox .field{min-width:0;width:100%;max-width:100%;}
+.modalBox input[type="date"]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;-webkit-appearance:none;appearance:none;padding-left:12px;padding-right:12px;font-size:16px;}
+.modalBox .formgrid,.modalBox .newClientSection,.modalBox .caseDetailGrid{min-width:0;max-width:100%;}
+
 input:focus,select:focus,textarea:focus{border-color:rgba(0,122,255,.5);box-shadow:0 0 0 3px rgba(0,122,255,.10)}
 input::placeholder,textarea::placeholder{color:#8e8e93}.field label{color:var(--ios-secondary);font-size:11px;letter-spacing:0;text-transform:none}
 .item:hover{background:rgba(255,255,255,.84);border-color:rgba(0,122,255,.15)}
@@ -1202,7 +1207,7 @@ function factor(c){return c.term==='10'?.5:c.term==='5'?.25:1}
 function duration(c){return c.term==='5'?5:6}
 function eligible(c){return normalizeStatus(c.status)==='Inforce'}
 function calculatedCommencement(inforce){if(!inforce)return '';const d=new Date(inforce+'T00:00:00');const month=d.getMonth()+(d.getDate()>=3?1:0);return iso(new Date(d.getFullYear(),month,1))}
-function cycleStart(c){return c.commissionStart||c.commencement||calculatedCommencement(c.inforce)||c.inforce}
+function cycleStart(c){return calculatedCommencement(c.inforce)||c.inforce||c.commissionStart||c.commencement||''}
 function monthlyComm(c,date){
  if(!eligible(c))return 0;
  let start=new Date(cycleStart(c)+'T00:00:00'), d=new Date(date+'T00:00:00');
@@ -1264,7 +1269,7 @@ function caseForm(mode,ic='',reduceId=''){
  <div class="field"><label>Client Group</label><select name="group" required>${groupOptions}</select></div><div class="field full"><label>Product</label><select name="product"><option value="">— Optional —</option>${productOptions}</select></div></div></div>
  <div class="newClientSection full"><div class="newClientSectionTitle"><span class="sectionIcon">♢</span>Benefits <span class="sectionHint">Optional · Coverage details below</span></div><div class="benefitList">${benefitBlock}</div></div>
  <div class="field" id="inforceDateField" style="${inforceVisible?'':'display:none'}"><label>Inforce Date</label><input type="date" name="inforce" id="caseInforce" value="${c.inforce||''}" ${inforceVisible?'required':''}></div>
- <div class="field" id="commencementDateField" style="${inforceVisible?'':'display:none'}"><label>Commencement Date</label><input type="date" name="commissionStart" id="caseCommencement" value="${c.commissionStart||c.commencement||calculatedCommencement(c.inforce)||''}" ${inforceVisible?'required':''}><div class="small">Auto: Inforce day 1–2 = same month; day 3 onward = next month. You can adjust manually.</div></div>
+ <div class="field" id="commencementDateField" style="${inforceVisible?'':'display:none'}"><label>Commencement Date</label><input type="date" name="commissionStart" id="caseCommencement" value="${calculatedCommencement(c.inforce)||''}" readonly aria-readonly="true" ${inforceVisible?'required':''}><div class="small">Automatically calculated from Inforce Date. Only Inforce Date can be changed.</div></div>
  <div class="field"><label>Premium (per payment)</label><input id="premium" type="number" step=".01" name="premium" value="${c.premium??''}"></div>
  <div class="field"><label>Payment Mode</label><select id="payMode" name="payMode">${[['monthly','Monthly'],['quarterly','Quarterly'],['halfyearly','Half-Yearly'],['yearly','Yearly'],['single','Single Premium']].map(a=>`<option value="${a[0]}" ${c.payMode===a[0]?'selected':''}>${a[1]}</option>`).join('')}</select></div>
  <div class="field"><label>Payment Term</label><select name="term"><option value="20" ${(!c.term||c.term==='20')?'selected':''}>20 Year / Full Pay</option><option value="10" ${c.term==='10'?'selected':''}>10 Year</option><option value="5" ${c.term==='5'?'selected':''}>5 Year</option></select></div>
@@ -1272,7 +1277,7 @@ function caseForm(mode,ic='',reduceId=''){
  </div><div class="actions newClientActions">${mode==='edit'?`<button type="button" class="danger deleteClientBtn" onclick="deleteClient('${c.ic||''}')">Delete Client</button>`:''}<button type="button" class="secondary" onclick="closeModal()">Cancel</button><button class="primary newClientSave"><span>＋</span> Save ${mode==='edit'?'Changes':'New Case'} <b>→</b></button></div></form>`);
  let f=document.querySelector('.modal form'),p=f.querySelector('#premium'),pm=f.querySelector('#payMode'),t=f.querySelector('#tpc'),st=f.querySelector('#caseStatus'),df=f.querySelector('#inforceDateField'),inf=f.querySelector('#caseInforce');
  function calc(){let x=+p.value||0;t.value=(pm.value==='monthly'?x*12:pm.value==='quarterly'?x*4:pm.value==='halfyearly'?x*2:x).toFixed(2)}
- const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement');function syncInforce(){const yes=normalizeStatus(st.value)==='Inforce';df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());if(yes&&(!comm.value||comm.dataset.auto==='1')){comm.value=calculatedCommencement(inf.value);comm.dataset.auto='1'}} inf.addEventListener('change',()=>{comm.value=calculatedCommencement(inf.value);comm.dataset.auto='1'});comm.addEventListener('input',()=>{comm.dataset.auto='0'})
+ const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement');function syncInforce(){const yes=normalizeStatus(st.value)==='Inforce';df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());comm.value=calculatedCommencement(inf.value);comm.dataset.auto='1'} inf.addEventListener('change',()=>{comm.value=calculatedCommencement(inf.value);comm.dataset.auto='1'});
  p.oninput=calc;pm.onchange=calc;st.onchange=syncInforce;calc();syncInforce()
 }
 
@@ -1289,17 +1294,18 @@ function saveCaseForm(e,mode,reduceId){
  o.premium=+o.premium||0;
  o.tpc=+o.tpc||0;
  o.benefit=JSON.stringify(parseBenefits(fd));
- o.commissionStart=o.commissionStart||calculatedCommencement(o.inforce)||o.inforce||'';
+ o.commissionStart=calculatedCommencement(o.inforce)||o.inforce||'';
  // Preserve the original case type when editing an existing pipeline record.
  o.kind=existing?(existing.kind||'New Business'):(mode==='topup'?'Top Up':mode==='reduce'?'Reduce':'New Business');
  if(existing){
-   o.commissionStart=existing.commissionStart||existing.inforce||'';
+   // Commencement is always derived from Inforce Date; never manually editable.
+   o.commissionStart=calculatedCommencement(o.inforce)||o.inforce||'';
    o.parentId=existing.parentId||'';
  }
  upsertClient({client:o.client,ic:o.ic,group:o.group,clientStatus:o.status});
  if(mode==='topup'&&!existing){
    let parent=db.cases.find(c=>(c.client===o.client&&c.product===o.parentPolicy)||c.product===o.parentPolicy);
-   o.commissionStart=o.inforce;
+   o.commissionStart=calculatedCommencement(o.inforce)||o.inforce||'';
    o.parentId=parent?.id||'';
  }
  if(existing){
