@@ -1201,7 +1201,8 @@ function tpc(c){return +c.tpc||annual(c)}
 function factor(c){return c.term==='10'?.5:c.term==='5'?.25:1}
 function duration(c){return c.term==='5'?5:6}
 function eligible(c){return normalizeStatus(c.status)==='Inforce'}
-function cycleStart(c){return c.commissionStart||c.inforce}
+function calculatedCommencement(inforce){if(!inforce)return '';const d=new Date(inforce+'T00:00:00');const month=d.getMonth()+(d.getDate()>=3?1:0);return iso(new Date(d.getFullYear(),month,1))}
+function cycleStart(c){return c.commissionStart||c.commencement||calculatedCommencement(c.inforce)||c.inforce}
 function monthlyComm(c,date){
  if(!eligible(c))return 0;
  let start=new Date(cycleStart(c)+'T00:00:00'), d=new Date(date+'T00:00:00');
@@ -1263,6 +1264,7 @@ function caseForm(mode,ic='',reduceId=''){
  <div class="field"><label>Client Group</label><select name="group" required>${groupOptions}</select></div><div class="field full"><label>Product</label><select name="product"><option value="">— Optional —</option>${productOptions}</select></div></div></div>
  <div class="newClientSection full"><div class="newClientSectionTitle"><span class="sectionIcon">♢</span>Benefits <span class="sectionHint">Optional · Coverage details below</span></div><div class="benefitList">${benefitBlock}</div></div>
  <div class="field" id="inforceDateField" style="${inforceVisible?'':'display:none'}"><label>Inforce Date</label><input type="date" name="inforce" id="caseInforce" value="${c.inforce||''}" ${inforceVisible?'required':''}></div>
+ <div class="field" id="commencementDateField" style="${inforceVisible?'':'display:none'}"><label>Commencement Date</label><input type="date" name="commissionStart" id="caseCommencement" value="${c.commissionStart||c.commencement||calculatedCommencement(c.inforce)||''}" ${inforceVisible?'required':''}><div class="small">Auto: Inforce day 1–2 = same month; day 3 onward = next month. You can adjust manually.</div></div>
  <div class="field"><label>Premium (per payment)</label><input id="premium" type="number" step=".01" name="premium" value="${c.premium??''}"></div>
  <div class="field"><label>Payment Mode</label><select id="payMode" name="payMode">${[['monthly','Monthly'],['quarterly','Quarterly'],['halfyearly','Half-Yearly'],['yearly','Yearly'],['single','Single Premium']].map(a=>`<option value="${a[0]}" ${c.payMode===a[0]?'selected':''}>${a[1]}</option>`).join('')}</select></div>
  <div class="field"><label>Payment Term</label><select name="term"><option value="20" ${(!c.term||c.term==='20')?'selected':''}>20 Year / Full Pay</option><option value="10" ${c.term==='10'?'selected':''}>10 Year</option><option value="5" ${c.term==='5'?'selected':''}>5 Year</option></select></div>
@@ -1270,7 +1272,7 @@ function caseForm(mode,ic='',reduceId=''){
  </div><div class="actions newClientActions">${mode==='edit'?`<button type="button" class="danger deleteClientBtn" onclick="deleteClient('${c.ic||''}')">Delete Client</button>`:''}<button type="button" class="secondary" onclick="closeModal()">Cancel</button><button class="primary newClientSave"><span>＋</span> Save ${mode==='edit'?'Changes':'New Case'} <b>→</b></button></div></form>`);
  let f=document.querySelector('.modal form'),p=f.querySelector('#premium'),pm=f.querySelector('#payMode'),t=f.querySelector('#tpc'),st=f.querySelector('#caseStatus'),df=f.querySelector('#inforceDateField'),inf=f.querySelector('#caseInforce');
  function calc(){let x=+p.value||0;t.value=(pm.value==='monthly'?x*12:pm.value==='quarterly'?x*4:pm.value==='halfyearly'?x*2:x).toFixed(2)}
- function syncInforce(){const yes=normalizeStatus(st.value)==='Inforce';df.style.display=yes?'':'none';inf.required=yes;if(yes&&!inf.value)inf.value=iso(new Date())}
+ const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement');function syncInforce(){const yes=normalizeStatus(st.value)==='Inforce';df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());if(yes&&(!comm.value||comm.dataset.auto==='1')){comm.value=calculatedCommencement(inf.value);comm.dataset.auto='1'}} inf.addEventListener('change',()=>{comm.value=calculatedCommencement(inf.value);comm.dataset.auto='1'});comm.addEventListener('input',()=>{comm.dataset.auto='0'})
  p.oninput=calc;pm.onchange=calc;st.onchange=syncInforce;calc();syncInforce()
 }
 
@@ -1287,6 +1289,7 @@ function saveCaseForm(e,mode,reduceId){
  o.premium=+o.premium||0;
  o.tpc=+o.tpc||0;
  o.benefit=JSON.stringify(parseBenefits(fd));
+ o.commissionStart=o.commissionStart||calculatedCommencement(o.inforce)||o.inforce||'';
  // Preserve the original case type when editing an existing pipeline record.
  o.kind=existing?(existing.kind||'New Business'):(mode==='topup'?'Top Up':mode==='reduce'?'Reduce':'New Business');
  if(existing){
@@ -1835,7 +1838,7 @@ function profile(ic){
  let rows=db.cases.filter(c=>c.ic===ic),c=db.clients.find(x=>x.ic===ic)||rows[0],products=[...new Set(rows.map(x=>normalizeProduct(x.product||x.type)).filter(Boolean))];
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const benefitRows=(raw)=>{let b={};try{b=typeof raw==='string'?JSON.parse(raw||'{}'):(raw||{})}catch(e){b={}};const labels={b_Death___TPD:'Death / TPD',b_TMCC:'TMCC',b_43_CI:'43 CI',b_Acci_Death___TPD:'Acci Death / TPD',b_Acci_Medical_Reimbursement__per_case_:'Acci Medical Reimbursement (per case)'};let out=[];Object.keys(labels).forEach(k=>{if(b[k]!==undefined&&b[k]!==''&&b[k]!==null)out.push(`<div class="benefitSummaryRow"><span>${labels[k]}</span><strong>${money(Number(b[k])||0)}</strong></div>`)});if(b.med_plan||b.med_limit||b.med_whole||b.med_room||b.med_deduct){let d=[];if(b.med_plan)d.push(`<span>Plan <b>${esc(b.med_plan)}</b></span>`);if(b.med_limit)d.push(`<span>Annual Limit <b>${money(Number(b.med_limit)||0)}</b></span>`);if(b.med_whole)d.push(`<span>Whole Life Limit <b>${money(Number(b.med_whole)||0)}</b></span>`);if(b.med_room)d.push(`<span>Room &amp; Board <b>${money(Number(b.med_room)||0)}</b></span>`);if(b.med_deduct)d.push(`<span>Deductible / Med Saver <b>${money(Number(b.med_deduct)||0)}</b></span>`);out.push(`<div class="benefitSummaryRow benefitMedical"><span>Medical Card</span><div class="benefitDetailGrid">${d.join('')}</div></div>`)}if(b.payor==='on')out.push(`<div class="benefitSummaryRow"><span>Payor</span><strong>Included</strong></div>`);return out.length?`<div class="benefitSummary">${out.join('')}</div>`:`<div class="small" style="padding:10px 0">No benefit details recorded.</div>`};
- let productBlocks=products.map((p,i)=>{let rs=rows.filter(x=>normalizeProduct(x.product||x.type)===p),id='prod_'+i,active=rs.filter(x=>normalizeStatus(x.status)==='Inforce').length;return `<div class="profileProduct"><button class="profileProductHeader" onclick="document.getElementById('${id}').classList.toggle('hide')"><div><div class="profileProductName">${esc(p)}</div><div class="small">${rs.length} record${rs.length===1?'':'s'} · ${active} active</div></div><span class="chev">⌄</span></button><div id="${id}" class="hide profileProductBody">${rs.map(x=>`<div class="profilePolicy"><div class="row"><div><b>${esc(x.kind||'New Business')}</b><div class="small">${x.inforce?dateStr(x.inforce):'No inforce date'} · ${x.payMode||'-'}${x.policyNumber?` · Policy ${esc(x.policyNumber)}`:''}</div></div><span class="pill ${normalizeStatus(x.status)==='Inforce'?'green':normalizeStatus(x.status)==='Lapse'||normalizeStatus(x.status)==='Surrender'||normalizeStatus(x.status)==='Ceased'?'red':'yellow'}">${esc(normalizeStatus(x.status))}</span></div><div class="policyMetrics"><span>Premium <b>${x.premium?money(x.premium):'-'}</b></span><span>TPC <b>${money(tpc(x))}</b></span></div><div class="section" style="margin:14px 0 6px">Coverage</div>${benefitRows(x.benefit)}${x.kind==='Existing Policy'?'<div class="small" style="margin-top:10px">Imported existing policy</div>':x.kind==='Reduce'?'<div class="small" style="margin-top:10px">Reduced within existing commission cycle</div>':''}<div class="actions" style="margin-top:12px;justify-content:flex-end"><button class="danger" type="button" onclick="deletePolicy('${String(ic).replace(/'/g, '&#39;')}','${String(x.id).replace(/'/g, '&#39;')}')">Delete Policy</button></div></div>`).join('')}</div></div>`}).join('');
+ let productBlocks=products.map((p,i)=>{let rs=rows.filter(x=>normalizeProduct(x.product||x.type)===p),id='prod_'+i,active=rs.filter(x=>normalizeStatus(x.status)==='Inforce').length;return `<div class="profileProduct"><button class="profileProductHeader" onclick="document.getElementById('${id}').classList.toggle('hide')"><div><div class="profileProductName">${esc(p)}</div><div class="small">${rs.length} record${rs.length===1?'':'s'} · ${active} active</div></div><span class="chev">⌄</span></button><div id="${id}" class="hide profileProductBody">${rs.map(x=>`<div class="profilePolicy"><div class="row"><div><b>${esc(x.kind||'New Business')}</b><div class="small">${x.inforce?dateStr(x.inforce):'No inforce date'} · Commencement ${dateStr(cycleStart(x))} · ${x.payMode||'-'}${x.policyNumber?` · Policy ${esc(x.policyNumber)}`:''}</div></div><span class="pill ${normalizeStatus(x.status)==='Inforce'?'green':normalizeStatus(x.status)==='Lapse'||normalizeStatus(x.status)==='Surrender'||normalizeStatus(x.status)==='Ceased'?'red':'yellow'}">${esc(normalizeStatus(x.status))}</span></div><div class="policyMetrics"><span>Premium <b>${x.premium?money(x.premium):'-'}</b></span><span>TPC <b>${money(tpc(x))}</b></span></div><div class="section" style="margin:14px 0 6px">Coverage</div>${benefitRows(x.benefit)}${x.kind==='Existing Policy'?'<div class="small" style="margin-top:10px">Imported existing policy</div>':x.kind==='Reduce'?'<div class="small" style="margin-top:10px">Reduced within existing commission cycle</div>':''}<div class="actions" style="margin-top:12px;justify-content:flex-end"><button class="secondary" type="button" onclick="caseForm('edit','${String(ic).replace(/'/g, '&#39;')}','${String(x.id).replace(/'/g, '&#39;')}')">Edit Policy</button><button class="danger" type="button" onclick="deletePolicy('${String(ic).replace(/'/g, '&#39;')}','${String(x.id).replace(/'/g, '&#39;')}')">Delete Policy</button></div></div>`).join('')}</div></div>`}).join('');
  modal(c.client,`<div class="small">${esc(c.ic||'-')} · Group ${esc(c.group||'-')}</div><div class="section">Client Details</div><div class="clientDetailCard"><div><span>Name</span><b>${esc(c.client)}</b></div><div><span>IC</span><b>${esc(c.ic||'-')}</b></div><div><span>Records</span><b>${rows.length}</b></div></div><div class="section">Products</div><div class="profileProducts">${productBlocks||'<div class="empty">No product records.</div>'}</div><div class="section">Coverage Analysis</div><div class="card"><div class="small">Saved needs analyses for this client</div><button class="secondary" style="margin-top:8px" onclick="coveragePrefillForClient('${ic}')">Open Coverage Calculator</button><button class="secondary" style="margin-top:8px" onclick="profileCoverageHistory('${ic}')">Review Saved Analyses</button></div><div class="actions"><button class="secondary" onclick="caseForm('edit','${ic}','${c.id}')">Edit</button><button class="secondary" onclick="caseForm('reduce','${ic}','${c.id}')">Reduce</button><button class="danger" onclick="deleteClient('${ic}')">Delete</button></div>`,true)
 }
 function profileCoverageHistory(ic){
@@ -1851,8 +1854,9 @@ async function deleteClient(ic){
  if(!confirm(`Delete ${clientName} and ALL linked policies and saved coverage analyses? This cannot be undone.`))return;
  const oldCases=db.cases,oldClients=db.clients,oldCoverage=db.coverageAnalyses||[];
  try{
-   if(!window.cloudReady||!window.cloudDeleteClientRecords)throw new Error('Cloud is not connected. Sign in and wait for Cloud synced before deleting.');
-   await window.cloudDeleteClientRecords(ic,clientName,db.cases.filter(c=>String(c.ic||'').trim().toLowerCase().replace(/\s+/g,'')===String(ic||'').trim().toLowerCase().replace(/\s+/g,'')),client?._cloudId);
+   if(window.cloudReady&&window.cloudDeleteClientRecords){
+     await window.cloudDeleteClientRecords(ic,clientName);
+   }
    const sameClient=row=>String(row.ic||'')===String(ic||'')||(!String(ic||'').trim()&&String(row.client||'')===String(clientName||''));
    db.cases=db.cases.filter(c=>!sameClient(c));
    db.clients=db.clients.filter(c=>!sameClient(c));
@@ -1863,7 +1867,7 @@ async function deleteClient(ic){
  }catch(err){
    console.error('Delete client failed:',err);
    db.cases=oldCases;db.clients=oldClients;db.coverageAnalyses=oldCoverage;
-   alert('Delete failed. The client and policies were kept.\n\nReason: '+(err?.message||'Unknown cloud error')+'\n\nPlease check the Cloud synced status and try again.');
+   alert('Delete failed. Cloud data was not fully deleted, so the client was kept. Please try again.');
  }
 }
 async function deletePolicy(ic,id){
@@ -1872,15 +1876,14 @@ async function deletePolicy(ic,id){
  const label=policy.policyNumber?`policy ${policy.policyNumber}`:`${policy.product||policy.kind||'this policy'}`;
  if(!confirm(`Delete only ${label}? The client and other policies will be kept.`))return;
  try{
-   if(!window.cloudReady||!window.cloudDeletePolicyRecord)throw new Error('Cloud is not connected. Sign in and wait for Cloud synced before deleting.');
-   await window.cloudDeletePolicyRecord(policy);
+   if(window.cloudReady&&window.cloudDeletePolicyRecord)await window.cloudDeletePolicyRecord(policy);
    db.cases=db.cases.filter(c=>String(c.id)!==String(id));
    localStorage.setItem(KEY,JSON.stringify(db));
    closeModal();render();
    toast('Policy deleted');
  }catch(err){
    console.error('Delete policy failed:',err);
-   alert('Delete failed. The policy was kept.\n\nReason: '+(err?.message||'Unknown cloud error')+'\n\nPlease check the Cloud synced status and try again.');
+   alert('Delete failed. The policy was kept. Please try again.');
  }
 }
 function contestValue(x){let rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce>=x.start&&c.inforce<=x.end&&(x.type==='Any'||normalizeProduct(c.product||c.type)===x.type));return x.metric==='TPC'?money(rows.reduce((s,c)=>s+tpc(c),0)):rows.length+' cases'}
@@ -1903,7 +1906,7 @@ function income(){
  let months=[],cursor=new Date(from.getFullYear(),from.getMonth(),1);
  while(cursor<=now){let key=monthKey(cursor),v=active.reduce((s,c)=>s+monthlyComm(c,key+'-01'),0);months.push({key,v});cursor.setMonth(cursor.getMonth()+1)}
  let currentKey=monthKey(),utd=active.reduce((s,c)=>s+monthlyComm(c,currentKey+'-01'),0);
- let increment=active.filter(c=>c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((s,c)=>s+monthlyComm(c,currentKey+'-01'),0);
+ let increment=active.filter(c=>c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((s,c)=>s+monthlyComm({...c,commissionStart:c.inforce},currentKey+'-01'),0);
  let clients=clientRecords().length,existingActive=active.filter(c=>c.kind==='Existing Policy').length;
  let max=Math.max(...months.map(x=>x.v),1),bars=months.slice(-24).map((x,i)=>`<button class="bar" title="${x.key}: ${money(x.v)}" onclick="incomeMonthBreakdown('${x.key}')" style="height:${Math.max(3,x.v/max*100)}%;padding:0;border:0;cursor:pointer;position:relative"><span style="position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(-50%);font-size:9px;white-space:nowrap;color:var(--muted)">${money(x.v)}</span><span style="position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);font-size:9px;white-space:nowrap">${x.key.slice(5)}</span></button>`).join('');
  document.getElementById('income').innerHTML=`<div class="row"><div class="section">Income</div><select style="width:130px" onchange="incomePeriod=this.value;render()"><option value="month" ${period==='month'?'selected':''}>1 Month</option><option value="quarter" ${period==='quarter'?'selected':''}>Quarter</option><option value="year" ${period==='year'?'selected':''}>1 Year</option><option value="3y" ${period==='3y'?'selected':''}>3 Years</option><option value="5y" ${period==='5y'?'selected':''}>5 Years</option><option value="7y" ${period==='7y'?'selected':''}>7 Years</option><option value="10y" ${period==='10y'?'selected':''}>10 Years</option></select></div>
@@ -1918,7 +1921,7 @@ function income(){
 let incomePeriod='year';
 function incomeBreakdown(type){
  let date=monthKey()+'-01', rows=[];
- if(type==='increment') rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(monthKey())).map(c=>({c,v:monthlyComm(c,date)})).filter(x=>x.v>0);
+ if(type==='increment') rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(monthKey())).map(c=>({c,v:monthlyComm({...c,commissionStart:c.inforce},date)})).filter(x=>x.v>0);
  else rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce').map(c=>({c,v:monthlyComm(c,date)})).filter(x=>x.v>0);
  let title=type==='increment'?'This Month Increment Breakdown':'Estimated UTD Monthly Income Breakdown';
  modal(title,`<div class="small" style="margin-bottom:12px">${rows.length} policy${rows.length===1?'':'ies'} · ${money(rows.reduce((s,x)=>s+x.v,0))}</div><div class="list">${rows.map(x=>`<div class="item"><div class="row"><div><b>${x.c.client}</b><div class="small">${x.c.product||x.c.type} · ${x.c.kind}</div><div class="small">Inforce ${dateStr(x.c.inforce)} · Commission ${Math.ceil((new Date(date).getFullYear()-new Date((cycleStart(x.c)||x.c.inforce)+'T00:00:00').getFullYear())*12+(new Date(date).getMonth()-new Date((cycleStart(x.c)||x.c.inforce)+'T00:00:00').getMonth())+1,0)/12} year</div></div><b>${money(x.v)}</b></div></div>`).join('')||'<div class="empty">No commission for this period.</div>'}</div>`,true)
@@ -2300,7 +2303,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
    const utdIncome=active.reduce((s,c)=>s+monthlyComm(c,date),0);
    // This month increment = recurring monthly commission created by inforce production in the current month.
    const thisMonthRows=active.filter(c=>c.inforce?.startsWith(todayKey)&&c.kind!=='Existing Policy');
-   const thisMonthIncrement=thisMonthRows.reduce((s,c)=>s+monthlyComm(c,date),0);
+   const thisMonthIncrement=thisMonthRows.reduce((s,c)=>s+monthlyComm({...c,commissionStart:c.inforce},date),0);
    const clientCount=new Set(active.map(c=>c.ic||c.client).filter(Boolean)).size;
    const recent=active.slice().sort((a,b)=>String(b.inforce||'').localeCompare(String(a.inforce||''))).slice(0,5);
    const bars=[];
@@ -2587,66 +2590,34 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
   }
   window.cloudRestoreSnapshot=cloudRestoreSnapshot;
 
-  // Explicit, verified cloud deletes. Delete child rows first, then the client row.
-  // Match by cloud ID AND stable client/policy references to handle older imported rows.
-  function deleteKey(v){return String(v??'').trim().toLowerCase().replace(/\s+/g,'')}
-  window.cloudDeleteClientRecords=async function(ic,clientName='',localPolicies=[],localClientCloudId=''){
+  // Explicit cloud deletes prevent the next full upsert from resurrecting records.
+  window.cloudDeleteClientRecords=async function(ic,clientName=''){
     if(!cloudUser)throw new Error('Not signed in');
     clearTimeout(cloudTimer);
     while(cloudSyncing) await new Promise(resolve=>setTimeout(resolve,100));
     cloudLoading=true;
     try{
-      const wantedIC=deleteKey(ic), wantedName=deleteKey(clientName);
-      const {data:allClients,error:clientsErr}=await sb.from('clients').select('id,ic,name').eq('user_id',cloudUser.id);
-      if(clientsErr)throw clientsErr;
-      const matchedClients=(allClients||[]).filter(c=>{
-        const rowIC=deleteKey(c.ic), rowName=deleteKey(c.name);
-        return (wantedIC && rowIC===wantedIC) || (!wantedIC && wantedName && rowName===wantedName);
-      });
-      const clientIds=[...new Set([...matchedClients.map(c=>c.id),localClientCloudId].filter(Boolean))];
-      const localRefs=new Set((localPolicies||[]).flatMap(p=>[String(p.id||''),String(p._cloudId||'')]).filter(Boolean));
-      const {data:allPolicies,error:policiesErr}=await sb.from('policies').select('id,client_id,source_reference').eq('user_id',cloudUser.id);
-      if(policiesErr)throw policiesErr;
-      const matchedPolicies=(allPolicies||[]).filter(p=>clientIds.includes(p.client_id)||(p.source_reference&&localRefs.has(String(p.source_reference)))||localRefs.has(String(p.id)));
-      for(const p of matchedPolicies){
-        const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('id',p.id);
-        if(error)throw error;
-      }
-      const {data:allCoverage,error:coverageReadErr}=await sb.from('coverage_analyses').select('id,client_ic,client_name').eq('user_id',cloudUser.id);
-      if(coverageReadErr)throw coverageReadErr;
-      const matchedCoverage=(allCoverage||[]).filter(x=>(wantedIC&&deleteKey(x.client_ic)===wantedIC)||(!wantedIC&&wantedName&&deleteKey(x.client_name)===wantedName));
-      for(const x of matchedCoverage){
-        const {error}=await sb.from('coverage_analyses').delete().eq('user_id',cloudUser.id).eq('id',x.id);
-        if(error)throw error;
-      }
-      for(const id of clientIds){
-        const {error}=await sb.from('clients').delete().eq('user_id',cloudUser.id).eq('id',id);
-        if(error)throw error;
-      }
-      const {data:verifyClients,error:verifyClientErr}=await sb.from('clients').select('id,ic,name').eq('user_id',cloudUser.id);
-      if(verifyClientErr)throw verifyClientErr;
-      if((verifyClients||[]).some(c=>(wantedIC&&deleteKey(c.ic)===wantedIC)||(!wantedIC&&wantedName&&deleteKey(c.name)===wantedName)))throw new Error('Cloud client row still exists after delete');
-      const {data:verifyPolicies,error:verifyPolicyErr}=await sb.from('policies').select('id,client_id,source_reference').eq('user_id',cloudUser.id);
-      if(verifyPolicyErr)throw verifyPolicyErr;
-      if((verifyPolicies||[]).some(p=>clientIds.includes(p.client_id)||(p.source_reference&&localRefs.has(String(p.source_reference)))||localRefs.has(String(p.id))))throw new Error('Cloud policy rows still exist after delete');
+      let clientQuery=sb.from('clients').select('id').eq('user_id',cloudUser.id);
+      clientQuery=String(ic||'').trim()?clientQuery.eq('ic',String(ic)):clientQuery.eq('name',String(clientName||''));
+      const {data:clientRows,error:clientErr}=await clientQuery;
+      if(clientErr)throw clientErr;
+      const ids=(clientRows||[]).map(r=>r.id).filter(Boolean);
+      // Policies are child records: remove them before deleting their client rows.
+      for(const id of ids){const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('client_id',id);if(error)throw error;}
+      const {error:coverageErr}=await sb.from('coverage_analyses').delete().eq('user_id',cloudUser.id).eq('client_ic',String(ic||''));
+      if(coverageErr)throw coverageErr;
+      if(ids.length){const {error}=await sb.from('clients').delete().eq('user_id',cloudUser.id).in('id',ids);if(error)throw error;}
     }finally{cloudLoading=false;}
   };
   window.cloudDeletePolicyRecord=async function(policy){
     if(!cloudUser)throw new Error('Not signed in');
-    if(!policy)throw new Error('Selected policy was not found');
+    const id=policy?._cloudId;
+    if(!id)throw new Error('Missing cloud policy ID; refresh cloud data and try again');
     clearTimeout(cloudTimer);
     while(cloudSyncing) await new Promise(resolve=>setTimeout(resolve,100));
     cloudLoading=true;
-    try{
-      const localId=String(policy.id||'');
-      const cloudId=String(policy._cloudId||'');
-      if(cloudId){const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('id',cloudId);if(error)throw error;}
-      if(localId){const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('source_reference',localId);if(error)throw error;}
-      if(!cloudId&&!localId)throw new Error('Missing policy ID; refresh cloud data and try again');
-      const {data:remaining,error:verifyErr}=await sb.from('policies').select('id,source_reference').eq('user_id',cloudUser.id);
-      if(verifyErr)throw verifyErr;
-      if((remaining||[]).some(p=>(cloudId&&String(p.id)===cloudId)||(localId&&String(p.source_reference||'')===localId)))throw new Error('Cloud policy row still exists after delete');
-    }finally{cloudLoading=false;}
+    try{const {error}=await sb.from('policies').delete().eq('user_id',cloudUser.id).eq('id',id);if(error)throw error;}
+    finally{cloudLoading=false;}
   };
 
   async function cloudUploadAll(){
