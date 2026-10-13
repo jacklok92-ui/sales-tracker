@@ -1694,7 +1694,7 @@ function coachAnswer(q){
 function askCoach(){const input=document.getElementById('coachQuestion'),q=input?.value.trim();if(!q)return;modal('AI Coach',`<div class="small" style="margin-bottom:8px">${q}</div><div class="card aiCoach"><b>Coach response</b><div style="margin-top:8px;line-height:1.6">${coachAnswer(q)}</div></div>`,true);input.value=''}
 function home(){const currentKey=monthKey(),productionRows=db.cases.filter(c=>c.inforce?.startsWith(currentKey)&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce'),productionTPC=productionRows.reduce((s,c)=>s+tpc(c),0),productionCases=Math.floor(productionTPC/1800),activeExisting=db.cases.filter(c=>c.kind==='Existing Policy'&&normalizeStatus(c.status)==='Inforce'),existingIncome=activeExisting.reduce((s,c)=>s+monthlyComm(c,currentKey+'-01'),0),ongoing=db.contests.filter(x=>x.start<=iso(new Date())&&x.end>=iso(new Date()));document.getElementById('home').innerHTML=`<div class="section">${L('production')}</div><div class="grid"><div class="card" role="button" tabindex="0" onclick="homeProductionBreakdown('TPC')" onkeydown="if(event.key==='Enter'||event.key===' ')homeProductionBreakdown('TPC',productionRows)"><div class="label">TPC</div><div class="metric">${money(productionTPC)}</div><div class="small">Current-month production · Tap to view breakdown</div></div><div class="card" role="button" tabindex="0" onclick="homeProductionBreakdown('Cases')" onkeydown="if(event.key==='Enter'||event.key===' ')homeProductionBreakdown('Cases',productionRows)"><div class="label">Cases</div><div class="metric">${productionCases}</div><div class="small">RM1,800 TPC = 1 case · Tap to view breakdown</div></div></div><div class="section">Vital Behaviour Tracker</div><div class="small" style="margin:-4px 0 10px">Actions are captured automatically when your pipeline moves forward.</div>${behaviourTrackerHome()}<div class="section">${L('existing')}</div><div class="grid"><div class="card" onclick="homeExistingBreakdown()"><div class="label">${L('activeImported')}</div><div class="metric">${activeExisting.length}</div><div class="small">All active imported policies · Tap to view</div></div><div class="card" onclick="homeExistingIncomeBreakdown()"><div class="label">${L('estimatedMonthly')}</div><div class="metric">${money(existingIncome)}</div><div class="small">Based on Inforce Date & commission cycle · Tap to view</div></div></div><div class="section">${L('ongoing')}</div><div class="list">${ongoing.map(x=>`<div class="card"><div class="row"><b>${x.name}</b><span class="pill yellow">${x.metric}</span></div><div class="small">${x.start} → ${x.end}</div><div class="metric">${contestValue(x)}</div></div>`).join('')||'<div class="empty">No ongoing contests.</div>'}</div>`}
 function homeProductionBreakdown(type){
-  // Always use the month selected on Home, not the device's actual current month.
+  // Always use the selected Home period, not the device's actual current month.
   const selectedDate = typeof selectedHomeDate === 'function' ? selectedHomeDate() : new Date();
   const view=window.homeTPCView||'month', period=homeTPCPeriodInfo(view,selectedDate), selectedLabel=period.label;
   const rows=db.cases.filter(c=>c.inforce&&c.inforce>=period.start&&c.inforce<=period.end&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce');
@@ -2605,12 +2605,12 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
  }
  function homeTPCPeriodPicker(view,now){
    const y=window.homeTPCYear||now.getFullYear(),q=window.homeTPCQuarter||Math.floor(now.getMonth()/3)+1,h=window.homeTPCHalf||(now.getMonth()<6?1:2),years=Array.from({length:9},(_,i)=>now.getFullYear()-5+i);
-   if(view==='quarter')return `<select aria-label="Quarter" onchange="window.homeTPCQuarter=+this.value;render()">${[1,2,3,4].map(n=>`<option value="${n}" ${q===n?'selected':''}>Q${n}</option>`).join('')}</select><select aria-label="Year" onchange="window.homeTPCYear=+this.value;render()">${years.map(n=>`<option ${n===y?'selected':''}>${n}</option>`).join('')}</select>`;
-   if(view==='half')return `<select aria-label="Half year" onchange="window.homeTPCHalf=+this.value;render()"><option value="1" ${h===1?'selected':''}>1H</option><option value="2" ${h===2?'selected':''}>2H</option></select><select aria-label="Year" onchange="window.homeTPCYear=+this.value;render()">${years.map(n=>`<option ${n===y?'selected':''}>${n}</option>`).join('')}</select>`;
-   if(view==='year')return `<select aria-label="Year" onchange="window.homeTPCYear=+this.value;render()">${years.map(n=>`<option ${n===y?'selected':''}>${n}</option>`).join('')}</select>`;
+   if(view==='quarter')return `<select aria-label="Quarter" onchange="window.homeTPCQuarter=Number(this.value);if(typeof window.render==='function')window.render()">${[1,2,3,4].map(n=>`<option value="${n}" ${q===n?'selected':''}>Q${n}</option>`).join('')}</select><select aria-label="Year" onchange="window.homeTPCYear=Number(this.value);if(typeof window.render==='function')window.render()">${years.map(n=>`<option ${n===y?'selected':''}>${n}</option>`).join('')}</select>`;
+   if(view==='half')return `<select aria-label="Half year" onchange="window.homeTPCHalf=Number(this.value);if(typeof window.render==='function')window.render()"><option value="1" ${h===1?'selected':''}>1H</option><option value="2" ${h===2?'selected':''}>2H</option></select><select aria-label="Year" onchange="window.homeTPCYear=Number(this.value);if(typeof window.render==='function')window.render()">${years.map(n=>`<option ${n===y?'selected':''}>${n}</option>`).join('')}</select>`;
+   if(view==='year')return `<select aria-label="Year" onchange="window.homeTPCYear=Number(this.value);if(typeof window.render==='function')window.render()">${years.map(n=>`<option ${n===y?'selected':''}>${n}</option>`).join('')}</select>`;
    return `<button class="homeMonthButton" onclick="openHomeMonthPicker()">▣ ${monthLabel(now)} <span style="color:var(--ios-muted)">⌄</span></button>`;
  }
- function setHomeTPCView(v){const d=selectedHomeDate();window.homeTPCView=v;window.homeTPCYear=d.getFullYear();window.homeTPCQuarter=Math.floor(d.getMonth()/3)+1;window.homeTPCHalf=d.getMonth()<6?1:2;render()}
+ function setHomeTPCView(v){const d=selectedHomeDate();window.homeTPCView=v;window.homeTPCYear=d.getFullYear();window.homeTPCQuarter=Math.floor(d.getMonth()/3)+1;window.homeTPCHalf=d.getMonth()<6?1:2;if(typeof window.render==='function')window.render()}
  function iosHome(){
    const now=selectedHomeDate(), key=window.homeMonthKey, view=window.homeTPCView||'month';
    const period=homeTPCPeriodInfo(view,now);
@@ -2632,7 +2632,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
    document.getElementById('home').innerHTML=`
     <div class="iosHomeHead"><div class="iosGreeting">Good morning,</div><div class="iosName">Jack 👋</div>
       <div class="iosDateRow"><div class="homeTPCControls"><select aria-label="TPC view" onchange="setHomeTPCView(this.value)"><option value="month" ${view==='month'?'selected':''}>Monthly</option><option value="quarter" ${view==='quarter'?'selected':''}>Quarterly</option><option value="half" ${view==='half'?'selected':''}>Half-Yearly</option><option value="year" ${view==='year'?'selected':''}>Whole Year</option></select>${homeTPCPeriodPicker(view,now)}</div><div class="iosProfile">JL</div></div></div>
-    <div class="card heroTPC breakdownTap" data-home-tpc-tap="1" role="button" tabindex="0" aria-label="Open ${period.label} TPC breakdown">
+    <div class="card heroTPC breakdownTap" data-home-tpc-tap="1" role="button" tabindex="0" onclick="window.homeProductionBreakdown('TPC')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.homeProductionBreakdown('TPC')}" aria-label="Open ${period.label} TPC breakdown">
       <div class="heroTop"><div><div class="heroTitle">${view==='month'?'Monthly TPC':view==='quarter'?'Quarterly TPC':view==='half'?'Half-Yearly TPC':'Yearly TPC'}</div><div class="heroValue">${money(tpcNow)}</div></div><div class="growth" aria-label="${tpcPrev>0?(((tpcNow-tpcPrev)/tpcPrev)*100).toFixed(1)+'% vs previous period':'No previous-period baseline'}">${tpcPrev>0?fmtPct(tpcNow,tpcPrev):(tpcNow>0?'New Production':'—')}</div></div>
       <div class="heroBars" aria-label="TPC trend: ${view}">${bars.map((v,i)=>`<i title="${v.label}: ${money(v.value)}" aria-label="${v.label}: ${money(v.value)}" style="height:${Math.max(5,(v.value/max)*100)}%;${i===bars.length-1?'background:var(--ios-blue)':''}"></i>`).join('')}</div>
       <div class="heroBarLabels">${bars.map(v=>`<span>${v.label}</span>`).join('')}</div>
@@ -2690,6 +2690,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
  window.openMoreMenu=moreMenu;
  window.show=function(id,btn){document.querySelectorAll('main section').forEach(x=>x.classList.add('hide'));let target=id==='portfolio'?'portfolio':id;document.getElementById(target)?.classList.remove('hide');document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));let page=id==='clients'?'portfolio':id;document.querySelector(`#nav button[data-page="${page}"]`)?.classList.add('active');if(id==='more'){moreMenu();return}render()};
  window.render=function(){applyTheme();let activeTheme=db.settings.theme||'light';document.documentElement.classList.toggle('dark-ios',activeTheme==='dark');document.documentElement.classList.toggle('system-theme',activeTheme==='system');document.getElementById('brandSub').textContent='Insurance CRM · Apple Native · V2.7';iosHome();iosPipeline();iosPortfolio();clients();sales();coverage();contest();income();window.settings();let visible=[...document.querySelectorAll('main section')].find(x=>!x.classList.contains('hide'));if(!visible){document.getElementById('home').classList.remove('hide')}};
+ window.homeProductionBreakdown=homeProductionBreakdown;window.setHomeTPCView=setHomeTPCView;
  // Replace Settings with a true iOS grouped list while preserving all existing setting controls.
  const oldSettings=settings;
  window.settings=function(){
@@ -3439,30 +3440,9 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
 .heroBarLabels{display:flex;gap:5px;margin-top:4px;color:var(--ios-muted);font-size:10px;text-align:center}
 .heroBarLabels span{flex:1;min-width:0}
 </style>
-<script id="home-tpc-tap-fix-js">
-(function(){
-  document.addEventListener('keydown',function(e){
-    const card=e.target&&e.target.closest&&e.target.closest('[data-home-tpc-tap="1"]');
-    if(card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(typeof window.homeProductionBreakdown==='function')window.homeProductionBreakdown('TPC');}
-  },true);
-})();
-</script>
-<script id="home-tpc-period-interaction-fix">
-(function(){
-  let lastTouch=0;
-  function openTPC(e){
-    const card=e.target&&e.target.closest&&e.target.closest('[data-home-tpc-tap="1"]');
-    if(!card)return;
-    if(e.type==='click' && Date.now()-lastTouch<800)return;
-    if(e.type==='touchend')lastTouch=Date.now();
-    if(e.cancelable)e.preventDefault();
-    e.stopPropagation();
-    try{if(typeof window.homeProductionBreakdown==='function')window.homeProductionBreakdown('TPC');}
-    catch(err){console.error('TPC breakdown failed',err);}
-  }
-  document.addEventListener('touchend',openTPC,{capture:true,passive:false});
-  document.addEventListener('click',openTPC,true);
-  document.addEventListener('keydown',function(e){const card=e.target&&e.target.closest&&e.target.closest('[data-home-tpc-tap="1"]');if(card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();e.stopPropagation();window.homeProductionBreakdown('TPC');}},true);
-})();
+<script id="home-tpc-global-handler-fix">
+// The Home TPC card uses a direct click handler. Expose the breakdown function for inline handlers.
+window.homeProductionBreakdown = homeProductionBreakdown;
+window.setHomeTPCView = setHomeTPCView;
 </script>
 </body></html>
