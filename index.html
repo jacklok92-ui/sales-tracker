@@ -1444,10 +1444,10 @@ body:not(.cloudLocked) main{
 <section id="home"></section><section id="pipeline" class="hide"></section><section id="portfolio" class="hide"></section><section id="sales" class="hide"></section><section id="clients" class="hide"></section><section id="coverage" class="hide"></section><section id="contest" class="hide"></section><section id="income" class="hide"></section><section id="settings" class="hide"></section>
 </main></div>
 <nav id="nav">
-<button class="active" data-page="home" onclick="show('home',this)"><span>⌂</span><em>Home</em></button>
-<button data-page="pipeline" onclick="show('pipeline',this)"><span>◫</span><em>Pipeline</em></button>
-<button data-page="portfolio" onclick="show('portfolio',this)"><span>▤</span><em>Portfolio</em></button>
-<button data-page="more" onclick="openMoreMenu(this)"><span>☰</span><em>More</em></button>
+<button class="active" data-page="home" onclick="show('home',this)"><span class="navEmoji">🏠</span><em>Home</em></button>
+<button data-page="pipeline" onclick="show('pipeline',this)"><span class="navEmoji">🗂️</span><em>Pipeline</em></button>
+<button data-page="portfolio" onclick="show('portfolio',this)"><span class="navEmoji">📋</span><em>Portfolio</em></button>
+<button data-page="more" onclick="openMoreMenu(this)"><span class="navEmoji">☰</span><em>More</em></button>
 </nav>
 <script>
 const PRODUCT_CANON={"basic term assurance":"Basic Term Assurance","pru88":"PRU88","prucash assurance with profits":"PRUCash Assurance With Profits","prucash double reward":"PRUCash Double Reward","prucash enrich":"PRUCash Enrich","prudential protection plus policy 70%":"Prudential Protection Plus Policy 70%","pruelite invest":"PRUElite Invest","prugrowth":"PRUGrowth","prulady":"PRUlady","prulady term assurance":"PRULady Term Assurance","prulife ready":"PRULife Ready","prulink":"PRULink","prulink assurance account":"PRULink Assurance Account","prulink assurance plan":"PRULink Assurance Plan","prulink investor account":"PRULink Investor Account","prulink million":"PRULink Million","prulink one":"PRULink One","prumy child":"PRUMy Child","prusave assurance with profits":"PRUSave Assurance With Profits","pruvantage":"PRUVantage","pruwealth":"PRUWealth","pruwealth enrich":"PRUWealth Enrich","pruwealth enrich 2.0":"PRUWealth Enrich 2.0","pruwealth max":"PRUWealth Max","pruwealth plus":"PRUWealth Plus","pruwith you":"PRUWith You","pruwith you plus":"PRUWith You Plus"};
@@ -2274,12 +2274,28 @@ async function deletePolicy(ic,id){
    alert('Delete failed. The policy was kept. Please try again.');
  }
 }
-function contestValue(x){let rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce>=x.start&&c.inforce<=x.end&&(x.type==='Any'||normalizeProduct(c.product||c.type)===x.type));return x.metric==='TPC'?money(rows.reduce((s,c)=>s+tpc(c),0)):rows.length+' cases'}
-function contest(){
- document.getElementById('contest').innerHTML=`<div class="row"><div class="section">Contest Tracker</div><button class="primary" onclick="newContest()">＋ Create Contest</button></div><div class="list">${db.contests.map((x,i)=>`<div class="card"><div class="row"><div><b>${x.name}</b><div class="small">${x.start} → ${x.end} · ${x.type==='Any'?'All Products':x.type}</div></div><button class="danger" onclick="deleteContest(${i})">Delete</button></div><div class="metric">${contestValue(x)}</div><div class="small">Target: ${x.metric==='TPC'?money(x.target):x.target+' cases'}</div></div>`).join('')||'<div class="empty">No contests yet.</div>'}</div>`
+function contestDate(v){const raw=String(v??'').trim();if(!raw)return '';const m=raw.match(/^(\d{4}-\d{2}-\d{2})/);if(m)return m[1];const d=new Date(raw);return Number.isNaN(d.getTime())?'':iso(d)}
+function contestRows(x){
+ const start=contestDate(x.start),end=contestDate(x.end);
+ if(!start||!end||start>end)return [];
+ return db.cases.filter(c=>{
+   const status=normalizeStatus(c.status);
+   const date=contestDate(c.inforce||c.inforce_date||c.inforceDate);
+   const product=normalizeProduct(c.product||c.type||'');
+   // Contest dates are inclusive. Existing portfolio policies are eligible too when their in-force date falls inside the contest.
+   return status==='Inforce'&&c.kind!=='Reduce'&&date>=start&&date<=end&&(x.type==='Any'||product===normalizeProduct(x.type));
+ });
 }
-function newContest(){modal('Create Contest',`<form onsubmit="saveContest(event)"><div class="formgrid"><div class="field"><label>Contest Name</label><input name="name" required></div><div class="field"><label>Metric</label><select name="metric"><option>TPC</option><option>Cases</option></select></div><div class="field"><label>Start</label><input name="start" type="date" required value="${monthKey()}-01"></div><div class="field"><label>End</label><input name="end" type="date" required></div><div class="field"><label>Product / Insurance Type</label><select name="type"><option>Any</option>${allProducts().map(p=>`<option>${p}</option>`).join('')}</select></div><div class="field"><label>Target</label><input name="target" type="number" required></div></div><div class="actions"><button class="primary">Save Contest</button></div></form>`)}
-function saveContest(e){e.preventDefault();let o=Object.fromEntries(new FormData(e.target).entries());o.type=normalizeProduct(o.type);o.target=+o.target;db.contests.push(o);closeModal();save()}
+function contestAmount(x){const rows=contestRows(x);return x.metric==='TPC'?rows.reduce((sum,c)=>sum+tpc(c),0):rows.length}
+function contestValue(x){const amount=contestAmount(x);return x.metric==='TPC'?money(amount):amount+' cases'}
+function contest(){
+ const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+ document.getElementById('contest').innerHTML=`<div class="contestPageHead"><div><div class="contestEyebrow">🏆 YOUR TARGETS, YOUR MOMENTUM</div><div class="section">Contest Tracker</div><div class="small">Track eligible in-force policies across each contest period.</div></div><button class="primary contestCreate" onclick="newContest()">＋ Create Contest</button></div>
+ <div class="contestSummaryGrid"><div class="contestMiniCard"><span>🏁</span><div><small>Active contests</small><b>${db.contests.filter(x=>contestDate(x.start)<=iso(new Date())&&contestDate(x.end)>=iso(new Date())).length}</b></div></div><div class="contestMiniCard"><span>📈</span><div><small>Total contest TPC</small><b>${money(db.contests.reduce((sum,x)=>sum+(x.metric==='TPC'?contestAmount(x):0),0))}</b></div></div></div>
+ <div class="contestList">${db.contests.map((x,i)=>{const amount=contestAmount(x),target=Math.max(0,Number(x.target)||0),pct=target>0?Math.min(100,amount/target*100):0,rows=contestRows(x),active=contestDate(x.start)<=iso(new Date())&&contestDate(x.end)>=iso(new Date());return `<article class="contestCard"><div class="contestCardTop"><div class="contestIcon">🏆</div><div class="contestTitle"><h3>${esc(x.name)}</h3><div class="contestMeta">${esc(contestDate(x.start)||x.start)} <span>→</span> ${esc(contestDate(x.end)||x.end)}</div><div class="contestChips"><span>${x.type==='Any'?'🌈 All Products':'🛡️ '+esc(x.type)}</span><span>${x.metric==='TPC'?'💎 TPC':'📋 Cases'}</span><span class="${active?'contestLive':'contestScheduled'}">${active?'● LIVE':'◷ SCHEDULED / ENDED'}</span></div></div><button class="contestDelete" onclick="deleteContest(${i})" aria-label="Delete contest">Delete</button></div><div class="contestMetricRow"><div><small>${x.metric==='TPC'?'CURRENT TPC':'ELIGIBLE CASES'}</small><strong>${x.metric==='TPC'?money(amount):amount}</strong></div><div class="contestTarget"><small>TARGET</small><b>${x.metric==='TPC'?money(target):target+' cases'}</b></div></div><div class="contestProgressTrack"><i style="width:${pct.toFixed(1)}%"></i></div><div class="contestFoot"><span>${pct.toFixed(1)}% achieved</span><span>${rows.length} eligible policies</span></div></article>`}).join('')||'<div class="contestEmpty"><span>🏆</span><b>Your next win starts here.</b><p>Create a contest to track production, dates and progress.</p></div>'}</div>`;
+}
+function newContest(){modal('🏆 Create Contest',`<form onsubmit="saveContest(event)" class="contestForm"><div class="formgrid"><div class="field"><label>Contest Name</label><input name="name" required placeholder="e.g. Starclub 2026"></div><div class="field"><label>Metric</label><select name="metric"><option value="TPC">TPC</option><option value="Cases">Cases</option></select></div><div class="field"><label>Start</label><input name="start" type="date" required value="${monthKey()}-01"></div><div class="field"><label>End</label><input name="end" type="date" required value="${iso(new Date())}"></div><div class="field"><label>Product / Insurance Type</label><select name="type"><option value="Any">Any · All Products</option>${allProducts().map(p=>`<option value="${String(p).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">${String(p).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</option>`).join('')}</select></div><div class="field"><label>Target</label><input name="target" type="number" min="0" step="any" required placeholder="Enter target"></div></div><div class="actions"><button class="primary">Create Contest ✨</button></div></form>`,true)}
+function saveContest(e){e.preventDefault();let o=Object.fromEntries(new FormData(e.target).entries());o.type=o.type==='Any'?'Any':normalizeProduct(o.type);o.target=+o.target;if(!contestDate(o.start)||!contestDate(o.end)||contestDate(o.start)>contestDate(o.end)){alert('Please check the contest dates. End date must be on or after start date.');return}db.contests.push(o);closeModal();save()}
 function deleteContest(i){if(confirm('Delete this contest?')){db.contests.splice(i,1);save()}}
 
 function income(){
@@ -2795,7 +2811,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
    <div class="homeSectionHead"><h3>Recent Added</h3></div>
    <div class="list">${recent.map(c=>`<div class="card leadRow" onclick="profile('${String(c.ic||'').replace(/'/g,"\'")}')"><div class="avatar">${initials(c.client)}</div><div class="leadMain"><div class="leadName">${c.client||'-'}</div><div class="leadProduct">${c.product||c.type||'-'}</div></div><div class="leadRight"><div style="font-size:13px;font-weight:750">${money(c.premium||0)} / ${c.payMode||'month'}</div><div class="leadTime">${dateStr(c.inforce)}</div></div></div>`).join('')||'<div class="empty">No active policies yet.</div>'}</div>`;
  }
- function moreMenu(){modal('More',`<div class="moreGrid"><div class="card moreItem" onclick="closeModal();show('sales',null)"><div class="moreIcon">▥</div><div><b>Sales</b><span>Historical production</span></div></div><div class="card moreItem" onclick="closeModal();show('clients',null)"><div class="moreIcon">♙</div><div><b>Clients</b><span>Client directory</span></div></div><div class="card moreItem" onclick="closeModal();show('coverage',null)"><div class="moreIcon">♡</div><div><b>Coverage</b><span>Protection analysis</span></div></div><div class="card moreItem" onclick="closeModal();show('income',null)"><div class="moreIcon">RM</div><div><b>Income</b><span>Commission & trend</span></div></div><div class="card moreItem" onclick="closeModal();show('contest',null)"><div class="moreIcon">★</div><div><b>Contest</b><span>Targets & progress</span></div></div><div class="card moreItem" onclick="closeModal();show('settings',null)"><div class="moreIcon">⚙</div><div><b>Settings</b><span>Appearance & data</span></div></div></div>`,true)}
+ function moreMenu(){modal('More',`<div class="moreGrid"><div class="card moreItem" onclick="closeModal();show('sales',null)"><div class="moreIcon">📊</div><div><b>Sales</b><span>Historical production</span></div></div><div class="card moreItem" onclick="closeModal();show('clients',null)"><div class="moreIcon">👤</div><div><b>Clients</b><span>Client directory</span></div></div><div class="card moreItem" onclick="closeModal();show('coverage',null)"><div class="moreIcon">🛡️</div><div><b>Coverage</b><span>Protection analysis</span></div></div><div class="card moreItem" onclick="closeModal();show('income',null)"><div class="moreIcon">💰</div><div><b>Income</b><span>Commission & trend</span></div></div><div class="card moreItem" onclick="closeModal();show('contest',null)"><div class="moreIcon">🏆</div><div><b>Contest</b><span>Targets & progress</span></div></div><div class="card moreItem" onclick="closeModal();show('settings',null)"><div class="moreIcon">⚙️</div><div><b>Settings</b><span>Appearance & data</span></div></div></div>`,true)}
  window.openMoreMenu=moreMenu;
  window.show=function(id,btn){document.querySelectorAll('main section').forEach(x=>x.classList.add('hide'));let target=id==='portfolio'?'portfolio':id;document.getElementById(target)?.classList.remove('hide');document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));let page=id==='clients'?'portfolio':id;document.querySelector(`#nav button[data-page="${page}"]`)?.classList.add('active');if(id==='more'){moreMenu();return}render()};
  window.render=function(){applyTheme();let activeTheme=db.settings.theme||'light';document.documentElement.classList.toggle('dark-ios',activeTheme==='dark');document.documentElement.classList.toggle('system-theme',activeTheme==='system');document.getElementById('brandSub').textContent='Insurance CRM · Apple Native · V2.7';iosHome();iosPipeline();iosPortfolio();clients();sales();coverage();contest();income();window.settings();let visible=[...document.querySelectorAll('main section')].find(x=>!x.classList.contains('hide'));if(!visible){document.getElementById('home').classList.remove('hide')}};
@@ -3569,6 +3585,60 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
 #sales .formgrid>.salesDateField{grid-column:1 / -1;}
 #sales .salesDateField input[type="date"]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;padding-left:8px;padding-right:8px;font-size:16px;-webkit-appearance:none;appearance:none;}
 #sales .formgrid>.field.full{grid-column:1 / -1;}
+
+/* Modern iOS / youthful visual refresh */
+.navEmoji{font-size:20px;line-height:1.1;display:block;filter:saturate(1.08)}
+.moreGrid{gap:12px!important}
+.moreItem{border:1px solid rgba(255,255,255,.82)!important;background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(239,244,255,.88))!important;box-shadow:0 12px 30px rgba(36,61,110,.08)!important;border-radius:26px!important;min-height:112px;transition:transform .18s ease,box-shadow .18s ease}
+.moreItem:active{transform:scale(.98)}
+.moreIcon{width:54px!important;height:54px!important;display:grid!important;place-items:center!important;border-radius:19px!important;background:linear-gradient(145deg,#eaf3ff,#dceaff)!important;color:#1677ff!important;font-size:27px!important;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.9)}
+.moreItem b{font-size:17px!important;letter-spacing:-.025em}
+.moreItem span{font-size:13px!important;line-height:1.35}
+.coverageHero{background:radial-gradient(circle at 90% 0%,rgba(91,92,255,.16),transparent 38%),linear-gradient(145deg,rgba(238,246,255,.96),rgba(250,247,255,.96))!important;border:1px solid rgba(255,255,255,.95)!important;border-radius:28px!important;box-shadow:0 18px 48px rgba(41,61,103,.09)!important}
+.coverageKpi .card{border:1px solid rgba(255,255,255,.9)!important;border-radius:22px!important;background:rgba(255,255,255,.82)!important;padding:15px!important}
+.coverageKpi .label{font-size:12px;font-weight:750;letter-spacing:.02em}
+.gapNum{font-size:clamp(20px,5vw,28px)!important;letter-spacing:-.055em!important;font-variant-numeric:tabular-nums}
+.coverageSection{border-radius:26px!important;border:1px solid rgba(255,255,255,.95)!important;background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(246,248,255,.9))!important;box-shadow:0 14px 38px rgba(41,61,103,.07)!important}
+.coverageBreakdownItem{border:1px solid rgba(225,231,244,.78)!important;border-radius:19px!important;margin:8px 0!important;padding:15px 16px!important;background:rgba(255,255,255,.92)!important;box-shadow:0 4px 14px rgba(41,61,103,.035)!important}
+.coverageBreakdownItem .row{align-items:center;gap:12px}
+.coverageBreakdownItem .row>span{font-size:13px;color:var(--muted);line-height:1.4}
+.coverageBreakdownItem .row>b{font-size:14px;font-weight:800;letter-spacing:-.02em;text-align:right;white-space:nowrap}
+.coveragePill{background:linear-gradient(120deg,#e7efff,#f0eaff)!important;color:#5653d9!important;border:1px solid rgba(115,112,255,.12)!important}
+.contestPageHead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:4px 0 18px}
+.contestPageHead .section{font-size:27px;letter-spacing:-.055em;margin:5px 0 4px}
+.contestEyebrow{font-size:10px;letter-spacing:.14em;font-weight:850;color:#6475e9}
+.contestCreate{white-space:nowrap;border-radius:16px!important;padding:12px 15px!important;box-shadow:0 9px 22px rgba(70,93,255,.2)}
+.contestSummaryGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.contestMiniCard{display:flex;align-items:center;gap:12px;padding:16px;border-radius:22px;border:1px solid rgba(255,255,255,.95);background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(240,245,255,.9));box-shadow:0 10px 26px rgba(38,59,100,.055);min-width:0}
+.contestMiniCard>span{display:grid;place-items:center;width:42px;height:42px;border-radius:15px;background:linear-gradient(145deg,#e6f0ff,#e9e7ff);font-size:22px;flex-shrink:0}
+.contestMiniCard>div{min-width:0}
+.contestMiniCard small,.contestMetricRow small{display:block;font-size:10px;font-weight:800;letter-spacing:.08em;color:#7b8498;margin-bottom:5px}
+.contestMiniCard b{display:block;font-size:18px;letter-spacing:-.04em;overflow-wrap:anywhere}
+.contestList{display:grid;gap:14px}
+.contestCard{padding:19px;border-radius:27px;border:1px solid rgba(255,255,255,.98);background:radial-gradient(circle at 100% 0%,rgba(104,120,255,.12),transparent 35%),linear-gradient(145deg,rgba(255,255,255,.98),rgba(246,248,255,.96));box-shadow:0 16px 42px rgba(37,55,94,.075);overflow:hidden}
+.contestCardTop{display:flex;align-items:flex-start;gap:12px}
+.contestIcon{width:48px;height:48px;display:grid;place-items:center;border-radius:17px;background:linear-gradient(145deg,#e4efff,#ede7ff);font-size:25px;flex-shrink:0}
+.contestTitle{flex:1;min-width:0}
+.contestTitle h3{margin:1px 0 4px;font-size:19px;line-height:1.2;letter-spacing:-.04em;overflow-wrap:anywhere}
+.contestMeta{font-size:12px;color:#777f90;font-weight:650}
+.contestMeta span{padding:0 4px;color:#9aa2b3}
+.contestChips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.contestChips span{font-size:10px;font-weight:750;padding:6px 9px;border-radius:999px;background:#eef3ff;color:#5968c8}
+.contestChips .contestLive{background:#e1f8ec;color:#218653}
+.contestChips .contestScheduled{background:#f0f1f5;color:#737b8b}
+.contestDelete{border:1px solid #ffd6d6;background:#fff3f3;color:#c64e57;border-radius:13px;padding:8px 10px;font-size:11px;font-weight:800}
+.contestMetricRow{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:23px 0 13px}
+.contestMetricRow strong{display:block;font-size:clamp(22px,6vw,31px);line-height:1.05;letter-spacing:-.055em;font-weight:900;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.contestTarget{text-align:right}
+.contestTarget b{font-size:14px;letter-spacing:-.025em}
+.contestProgressTrack{height:9px;border-radius:99px;background:#e8ebf4;overflow:hidden}
+.contestProgressTrack i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#3787ff,#7160ff);box-shadow:0 0 12px rgba(87,107,255,.22);transition:width .25s ease}
+.contestFoot{display:flex;justify-content:space-between;gap:8px;margin-top:9px;font-size:11px;color:#7c8495;font-weight:650}
+.contestEmpty{display:grid;justify-items:center;text-align:center;gap:7px;padding:35px 20px;border:1px dashed #cfd8ee;border-radius:26px;background:linear-gradient(145deg,#fff,#f4f6ff)}
+.contestEmpty>span{font-size:35px}.contestEmpty b{font-size:18px;letter-spacing:-.03em}.contestEmpty p{margin:0;color:#7b8498;font-size:13px}
+.contestForm .formgrid{gap:14px}
+@media(max-width:520px){.contestPageHead{flex-direction:column}.contestCreate{width:100%}.contestSummaryGrid{gap:9px}.contestMiniCard{padding:12px;gap:9px}.contestMiniCard>span{width:36px;height:36px;font-size:19px}.contestMiniCard b{font-size:15px}.contestCard{padding:15px;border-radius:23px}.contestIcon{width:42px;height:42px;font-size:22px}.contestDelete{padding:7px 8px}.contestFoot{font-size:10px}.coverageKpi{grid-template-columns:1fr!important}.coverageKpi .card{display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 10px}.coverageKpi .coverageMini{grid-column:1/-1}}
+
 </style>
 <script id="home-tpc-global-handler-fix">
 // The Home TPC card uses a direct click handler. Expose the breakdown function for inline handlers.
