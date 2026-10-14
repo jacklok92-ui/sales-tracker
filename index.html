@@ -1489,7 +1489,7 @@ const defaults={
  rates:[.25,.25,.135,.185,.15,.15],theme:"ivory"
 };
 let db=JSON.parse(localStorage.getItem(KEY)||'null')||{cases:[],clients:[],contests:[],settings:structuredClone(defaults)};
-db.cases=db.cases||[];db.clients=db.clients||[];db.contests=db.contests||[];db.coverageAnalyses=db.coverageAnalyses||[];db.behaviourTracker=db.behaviourTracker||{targets:{},logs:[]};db.behaviourTracker.targets=db.behaviourTracker.targets||{};db.behaviourTracker.logs=db.behaviourTracker.logs||[];
+db.cases=db.cases||[];db.clients=db.clients||[];db.contests=db.contests||[];db.salesMotions=db.salesMotions||[];db.coverageAnalyses=db.coverageAnalyses||[];db.behaviourTracker=db.behaviourTracker||{targets:{},logs:[]};db.behaviourTracker.targets=db.behaviourTracker.targets||{};db.behaviourTracker.logs=db.behaviourTracker.logs||[];
 db.settings={...structuredClone(defaults),...(db.settings||{})};
 const DEFAULT_NOTIFICATION_PREFS={enabled:true,dailyBriefing:true,dailyBriefingHour:9,pipelineReminders:true,pipelineHour:15,inactiveReminder:true,inactiveHour:18,monthlyProgress:true,monthlyProgressDay:1,monthlyProgressHour:9,quietStart:22,quietEnd:8,timezone:'Asia/Kuala_Lumpur'};
 let appLang=localStorage.getItem('salesTrackerLang')||'zh';
@@ -1557,7 +1557,68 @@ function annual(c){return c.payMode==='monthly'?+c.premium*12:c.payMode==='quart
 function tpc(c){return +c.tpc||annual(c)}
 function factor(c){return c.term==='10'?.5:c.term==='5'?.25:1}
 function duration(c){return c.term==='5'?5:6}
-function eligible(c){return normalizeStatus(c.status)==='Inforce'}
+function eligible(c){return ['Inforce','ROP Revoke','Revival'].includes(normalizeStatus(c.status))}
+function policyPortfolioActive(c){return ['Inforce','ROP','ROP Revoke','Revival'].includes(normalizeStatus(c.status))}
+function isHistoricalPolicyStatus(status){return ['Inforce','ROP','ROP Revoke','Lapse','Revival','Surrender','Ceased'].includes(normalizeStatus(status))}
+function salesMotionId(){return 'motion_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)}
+function salesMotionRows(from,to,product='Any'){
+ const start=String(from||''),end=String(to||'');
+ return (db.salesMotions||[]).filter(m=>m.date>=start&&m.date<=end&&(product==='Any'||normalizeProduct(m.product||'')===normalizeProduct(product))).map(m=>({id:m.id,caseId:m.caseId,client:m.client,ic:m.ic,product:m.product,type:m.product,inforce:m.date,tpc:Number(m.tpcDelta)||0,kind:'Sales Motion',motionType:m.type,status:'Inforce',salesCaseDelta:Number(m.caseDelta)||0,incomeDelta:Number(m.incomeDelta)||0,policyNumber:m.policyNumber||''}));
+}
+function salesTrackingRows(from,to,product='Any'){
+ const base=db.cases.filter(c=>c.inforce&&c.inforce>=from&&c.inforce<=to&&c.kind!=='Reduce'&&isHistoricalPolicyStatus(c.status)&&(product==='Any'||normalizeProduct(c.product||c.type||'')===normalizeProduct(product)));
+ return [...base,...salesMotionRows(from,to,product)];
+}
+function salesTPCInRange(from,to){return salesTrackingRows(from,to).reduce((sum,c)=>sum+tpc(c),0)}
+function salesCasesInRange(from,to){const base=db.cases.filter(c=>c.inforce&&c.inforce>=from&&c.inforce<=to&&c.kind!=='Reduce'&&isHistoricalPolicyStatus(c.status)).length;return base+(db.salesMotions||[]).filter(m=>m.date>=from&&m.date<=to).reduce((sum,m)=>sum+(Number(m.caseDelta)||0),0)}
+function incomeMotionsForMonth(key){return (db.salesMotions||[]).filter(m=>String(m.date||'').startsWith(key)).reduce((sum,m)=>sum+(Number(m.incomeDelta)||0),0)}
+function cumulativeCommissionBefore(policy,motionDate){
+ const startDate=cycleStart(policy)||policy.inforce;if(!startDate||!motionDate)return 0;
+ const start=new Date(String(startDate)+'T00:00:00'),end=new Date(String(motionDate).slice(0,7)+'-01T00:00:00');
+ if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())||start>=end)return 0;
+ let cursor=new Date(start.getFullYear(),start.getMonth(),1),sum=0,guard=0;
+ while(cursor<end&&guard<240){const key=monthKey(cursor);sum+=monthlyComm({...policy,status:'Inforce'},key+'-01');cursor.setMonth(cursor.getMonth()+1);guard++}
+ return Math.round(sum*100)/100;
+}
+function monthlyPolicyCommissionAt(policy,key){
+ const baseStatus=normalizeStatus(policy.status);
+ if(!isHistoricalPolicyStatus(baseStatus)||!policy.inforce)return 0;
+ const target=String(key||'').slice(0,7),policyId=String(policy.id||'');
+ const allEvents=(db.salesMotions||[]).filter(m=>String(m.caseId)===policyId&&m.date).sort((a,b)=>a.date.localeCompare(b.date));
+ const events=allEvents.filter(m=>m.date.slice(0,7)<=target);
+ let blocked=false;
+ events.forEach(m=>{if(['ROP','Lapse','Lapse (negative TPC)'].includes(m.type))blocked=true;else if(['ROP Revoke','Revival'].includes(m.type))blocked=false});
+ if(!allEvents.length&&['ROP','Lapse','Surrender','Ceased'].includes(baseStatus))return 0;
+ if(blocked)return 0;
+ return monthlyComm({...policy,status:'Inforce'},target+'-01');
+}
+function addSalesMotion(policy,type,date,values={}){
+ const m={id:salesMotionId(),caseId:String(policy.id||''),client:policy.client||'',ic:policy.ic||'',product:normalizeProduct(policy.product||policy.type||''),policyNumber:policy.policyNumber||'',type,date:date||iso(new Date()),tpcDelta:Number(values.tpcDelta)||0,caseDelta:Number(values.caseDelta)||0,incomeDelta:Number(values.incomeDelta)||0,negativeTPC:!!values.negativeTPC,countInSales:values.countInSales!==false,createdAt:new Date().toISOString(),reversedBy:''};
+ db.salesMotions.push(m);return m;
+}
+function recordPolicyMotion(policy,oldStatus,newStatus,formData){
+ const old=normalizeStatus(oldStatus),next=normalizeStatus(newStatus),date=contestDate(formData.motionDate)||iso(new Date()),caseId=String(policy.id||'');
+ if(old===next)return null;
+ if(next==='ROP'&&old!=='ROP'){
+   const clawback=cumulativeCommissionBefore({...policy,status:'Inforce'},date);
+   return addSalesMotion(policy,'ROP',date,{tpcDelta:-Math.abs(tpc(policy)),caseDelta:-1,incomeDelta:-Math.abs(clawback)});
+ }
+ if(next==='ROP Revoke'&&old==='ROP'){
+   const prior=[...(db.salesMotions||[])].reverse().find(m=>String(m.caseId)===caseId&&m.type==='ROP'&&!m.reversedBy);
+   if(!prior)return null;
+   const m=addSalesMotion(policy,'ROP Revoke',date,{tpcDelta:Math.abs(tpc(policy)),caseDelta:1,incomeDelta:Math.abs(Number(prior.incomeDelta)||0)});prior.reversedBy=m.id;return m;
+ }
+ if(next==='Lapse'){
+   if(formData.lapseNegativeTPC==='yes')return addSalesMotion(policy,'Lapse (negative TPC)',date,{tpcDelta:-Math.abs(tpc(policy)),caseDelta:-1,negativeTPC:true});
+   return addSalesMotion(policy,'Lapse',date,{countInSales:false});
+ }
+ if(next==='Revival'&&old==='Lapse'){
+   const prior=[...(db.salesMotions||[])].reverse().find(m=>String(m.caseId)===caseId&&m.type==='Lapse (negative TPC)'&&m.negativeTPC&&!m.reversedBy);
+   if(!prior)return null;
+   const m=addSalesMotion(policy,'Revival',date,{tpcDelta:Math.abs(tpc(policy)),caseDelta:1});prior.reversedBy=m.id;return m;
+ }
+ return null;
+}
 function calculatedCommencement(inforce){if(!inforce)return '';const d=new Date(inforce+'T00:00:00');const month=d.getMonth()+(d.getDate()>=3?1:0);return iso(new Date(d.getFullYear(),month,1))}
 function cycleStart(c){return calculatedCommencement(c.inforce)||c.inforce||c.commissionStart||c.commencement||''}
 function monthlyComm(c,date){
@@ -1611,10 +1672,10 @@ function caseForm(mode,ic='',reduceId=''){
  `<div class="field full"><label>Client Name</label><input value="${c.client||''}" disabled><input type="hidden" name="client" value="${c.client||''}"><input type="hidden" name="ic" value="${c.ic||''}"></div>`;
  let top=`${mode==='topup'?`<div class="field full"><label>Existing Product to Top Up</label><select name="parentPolicy">${existingProducts.map(p=>`<option>${p}</option>`).join('')}</select></div>`:''}`;
  let title=isReduce?'Reduce Policy':mode==='topup'?'Top Up':mode==='existing'?'New Business · Existing Client':'New Business · New Client';
- let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','Surrender','Lapse','Ceased'];
+ let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','ROP','ROP Revoke','Lapse','Revival','Surrender','Ceased'];
  let benefits=JSON.parse(c.benefit||'{}');
  let currentStatus=normalizeStatus(c.status||'To Approach');
- let inforceVisible=currentStatus==='Inforce';
+ let inforceVisible=['Inforce','ROP','ROP Revoke','Revival'].includes(currentStatus);
  let benefitBlock=benefitFields(benefits);
  modal(title,`<form class="newClientForm" onsubmit="saveCaseForm(event,'${mode}','${reduceId}')"><div class="formgrid">
  <div class="newClientSection full"><div class="newClientSectionTitle"><span class="sectionIcon">♙</span>Client Information</div>${clientBlock}</div>
@@ -1623,6 +1684,8 @@ function caseForm(mode,ic='',reduceId=''){
  <div class="newClientSection full"><div class="newClientSectionTitle"><span class="sectionIcon">♢</span>Benefits <span class="sectionHint">Optional · Coverage details below</span></div><div class="benefitList">${benefitBlock}</div></div>
  <div class="field" id="inforceDateField" style="${inforceVisible?'':'display:none'}"><label>Inforce Date</label><input type="date" name="inforce" id="caseInforce" value="${c.inforce||''}" ${inforceVisible?'required':''}></div>
  <div class="field" id="commencementDateField" style="${inforceVisible?'':'display:none'}"><label>Commencement Date</label><input type="date" name="commissionStart" id="caseCommencement" value="${calculatedCommencement(c.inforce)||''}" readonly aria-readonly="true" ${inforceVisible?'required':''}><div class="small">Automatically calculated from Inforce Date. Only Inforce Date can be changed.</div></div>
+ <div class="field full" id="salesMotionDateField" style="${['ROP','ROP Revoke','Lapse','Revival'].includes(currentStatus)?'':'display:none'}"><label id="salesMotionDateLabel">Motion Date</label><input type="date" name="motionDate" id="salesMotionDate" value="${c.motionDate||iso(new Date())}"><div class="small">This date determines the month of the sales adjustment.</div></div>
+ <div class="field full" id="lapseNegativeTPCField" style="${currentStatus==='Lapse'?'':'display:none'}"><label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="lapseNegativeTPC" value="yes" style="width:auto;margin-top:3px"> This lapse should deduct TPC and 1 case in the lapse month</label><div class="small">Leave unchecked for policies that lapsed after the first policy year or where no negative TPC applies.</div></div>
  <div class="field"><label>Premium (per payment)</label><input id="premium" type="number" step=".01" name="premium" value="${c.premium??''}"></div>
  <div class="field"><label>Payment Mode</label><select id="payMode" name="payMode">${[['monthly','Monthly'],['quarterly','Quarterly'],['halfyearly','Half-Yearly'],['yearly','Yearly'],['single','Single Premium']].map(a=>`<option value="${a[0]}" ${c.payMode===a[0]?'selected':''}>${a[1]}</option>`).join('')}</select></div>
  <div class="field"><label>Payment Term</label><select name="term"><option value="20" ${(!c.term||c.term==='20')?'selected':''}>20 Year / Full Pay</option><option value="10" ${c.term==='10'?'selected':''}>10 Year</option><option value="5" ${c.term==='5'?'selected':''}>5 Year</option></select></div>
@@ -1630,7 +1693,7 @@ function caseForm(mode,ic='',reduceId=''){
  </div><div class="actions newClientActions">${mode==='edit'?`<button type="button" class="danger deleteClientBtn" onclick="deleteClient('${c.ic||''}')">Delete Client</button>`:''}<button type="button" class="secondary" onclick="closeModal()">Cancel</button><button class="primary newClientSave"><span>＋</span> Save ${mode==='edit'?'Changes':'New Case'} <b>→</b></button></div></form>`);
  let f=document.querySelector('.modal form'),p=f.querySelector('#premium'),pm=f.querySelector('#payMode'),t=f.querySelector('#tpc'),st=f.querySelector('#caseStatus'),df=f.querySelector('#inforceDateField'),inf=f.querySelector('#caseInforce');
  function calc(){let x=+p.value||0;t.value=(pm.value==='monthly'?x*12:pm.value==='quarterly'?x*4:pm.value==='halfyearly'?x*2:x).toFixed(2)}
- const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement');function updateCommencement(){const next=calculatedCommencement(inf.value);comm.value=next;comm.setAttribute('value',next);comm.dataset.auto='1'}function syncInforce(){const yes=normalizeStatus(st.value)==='Inforce';df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());updateCommencement()}inf.addEventListener('input',updateCommencement);inf.addEventListener('change',updateCommencement);inf.addEventListener('blur',updateCommencement);
+ const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement'),motionDateField=document.getElementById('salesMotionDateField'),motionDateLabel=document.getElementById('salesMotionDateLabel'),motionDateInput=document.getElementById('salesMotionDate'),lapseNegativeField=document.getElementById('lapseNegativeTPCField');function updateCommencement(){const next=calculatedCommencement(inf.value);comm.value=next;comm.setAttribute('value',next);comm.dataset.auto='1'}function syncInforce(){const status=normalizeStatus(st.value),yes=['Inforce','ROP','ROP Revoke','Revival'].includes(status);df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());updateCommencement();if(motionDateField){const motion=['ROP','ROP Revoke','Lapse','Revival'].includes(status);motionDateField.style.display=motion?'':'none';if(motionDateInput&&!motionDateInput.value)motionDateInput.value=iso(new Date());if(motionDateLabel)motionDateLabel.textContent=status==='ROP'?'ROP Trigger Date':status==='ROP Revoke'?'ROP Revoke Date':status==='Lapse'?'Lapse Date':'Revival Date'}if(lapseNegativeField)lapseNegativeField.style.display=status==='Lapse'?'':'none'}inf.addEventListener('input',updateCommencement);inf.addEventListener('change',updateCommencement);inf.addEventListener('blur',updateCommencement);
  p.oninput=calc;pm.onchange=calc;st.onchange=syncInforce;calc();syncInforce()
 }
 
@@ -1666,6 +1729,8 @@ function saveCaseForm(e,mode,reduceId){
    if(oldStatus!==newStatus){try{behaviourRecordTransition(oldStatus,newStatus,merged,behaviourDate(new Date()));}catch(err){console.error('Vital Behaviour record failed',err);}}
    const idx=db.cases.findIndex(c=>String(c.id)===String(editingId));
    if(idx>=0) db.cases[idx]=merged;
+   const motion=recordPolicyMotion(merged,oldStatus,newStatus,o);
+   if(motion&&['ROP','ROP Revoke','Lapse (negative TPC)','Revival'].includes(motion.type))merged.motionDate=motion.date;
  }else{
    db.cases.push(o);
    if(newStatus!=='To Approach'){try{behaviourRecordTransition('To Approach',newStatus,o,behaviourDate(new Date()));}catch(err){console.error('Vital Behaviour record failed',err);}}
@@ -1739,9 +1804,9 @@ function homeProductionBreakdown(type){
   const view=window.homeTPCView||'month';
   if(typeof window.homeTPCPeriodInfo !== 'function') throw new Error('Home period helper is unavailable');
   const period=window.homeTPCPeriodInfo(view,selectedDate), selectedLabel=period.label;
-  const rows=db.cases.filter(c=>c.inforce&&c.inforce>=period.start&&c.inforce<=period.end&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce');
+  const rows=salesTrackingRows(period.start,period.end);
   const totalTPC = rows.reduce((s,c)=>s+tpc(c),0);
-  const caseCount = Math.floor(totalTPC/1800);
+  const caseCount = db.cases.filter(c=>c.inforce&&c.inforce>=period.start&&c.inforce<=period.end&&c.kind!=='Reduce'&&isHistoricalPolicyStatus(c.status)).length+rows.filter(c=>c.kind==='Sales Motion').reduce((sum,c)=>sum+(Number(c.salesCaseDelta)||0),0);
   const title = type==='TPC' ? `${selectedLabel} · TPC Breakdown` : `${selectedLabel} · Cases Breakdown`;
   const summary = type==='TPC'
     ? `${rows.length} production record${rows.length===1?'':'s'} · ${money(totalTPC)}`
@@ -1753,7 +1818,7 @@ function homeProductionBreakdown(type){
           <div>
             <b>${c.client||'-'}</b>
             <div class="small">${c.product||c.type||'-'} · ${c.kind||'New Business'}</div>
-            <div class="small">${dateStr(c.inforce)} · ${c.policyNumber||'-'}</div>
+            <div class="small">${c.kind==='Sales Motion'?'Adjustment: '+(c.motionType||'Sales motion')+' · ':''}${dateStr(c.inforce)} · ${c.policyNumber||'-'}</div>
           </div>
           <b>${money(tpc(c))}</b>
         </div>
@@ -1808,12 +1873,13 @@ function sales(){
  if(cfg.view==='h1'||cfg.view==='h2'){const oldHalf=cfg.view;cfg.view='half';cfg.half=oldHalf==='h2'?'second':'first';saveSalesCfgV10()}
  let dates=resolveSalesRangeV10(cfg,now);
  // Sales history is based on Inforce Date. Imported Existing Policy records are merged into the same Sales dataset so historical production is visible in the selected period. Reduce records remain excluded.
- let rows=db.cases.filter(c=>c.inforce&&c.inforce>=dates.from&&c.inforce<=dates.to&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce');
- let importedRows=db.cases.filter(c=>c.inforce&&c.inforce>=dates.from&&c.inforce<=dates.to&&c.kind==='Existing Policy'&&normalizeStatus(c.status)==='Inforce');
- let t=rows.reduce((a,c)=>a+tpc(c),0), cases=rows.length, avg=cases?t/cases:0;
+ let rows=salesTrackingRows(dates.from,dates.to);
+ let baseRows=rows.filter(c=>c.kind!=='Sales Motion');
+ let importedRows=baseRows.filter(c=>c.kind==='Existing Policy');
+ let t=rows.reduce((a,c)=>a+tpc(c),0), cases=baseRows.length+rows.filter(c=>c.kind==='Sales Motion').reduce((sum,c)=>sum+(Number(c.salesCaseDelta)||0),0), avg=cases>0?t/cases:0;
  let groups={};rows.forEach(c=>{let p=normalizeProduct(c.product||c.type||'Other');groups[p]=(groups[p]||0)+tpc(c)});
- let total=Object.values(groups).reduce((a,b)=>a+b,0),colors=['#2563eb','#7c3aed','#0d9488','#f59e0b','#ef4444','#0891b2','#65a30d','#db2777','#6366f1','#ea580c','#14b8a6','#a855f7','#64748b','#84cc16','#f97316','#06b6d4','#d946ef','#4f46e5'];
- let seg=0,grad=Object.entries(groups).map(([k,v],i)=>{let a=seg;seg+=total?v/total*100:0;return `${colors[i%colors.length]} ${a}% ${seg}%`}).join(',');
+ const positiveGroups=Object.entries(groups).filter(([,v])=>v>0);let total=positiveGroups.reduce((sum,[,v])=>sum+v,0),colors=['#2563eb','#7c3aed','#0d9488','#f59e0b','#ef4444','#0891b2','#65a30d','#db2777','#6366f1','#ea580c','#14b8a6','#a855f7','#64748b','#84cc16','#f97316','#06b6d4','#d946ef','#4f46e5'];
+ let seg=0,grad=positiveGroups.map(([k,v],i)=>{let a=seg;seg+=total?v/total*100:0;return `${colors[i%colors.length]} ${a}% ${seg}%`}).join(',');
  let grouping='month';
  let monthlyPoints=monthlySalesRangeV11(rows,dates.from,dates.to);
  let linePoints=monthlyPoints.map(p=>({...p,value:p.cumulative}));
@@ -1832,8 +1898,8 @@ function sales(){
  </div></div>
  <div class="card" style="margin-bottom:12px"><div class="label">Selected Production Range</div><div class="metric" style="font-size:19px">${formatDateRangeV10(dates.from,dates.to)}</div></div>
  <div class="grid3"><div class="card"><div class="label">Total Sales / TPC</div><div class="metric">${money(t)}</div></div><div class="card"><div class="label">Number of Cases</div><div class="metric">${cases}</div></div><div class="card"><div class="label">Average Case Size</div><div class="metric">${money(avg)}</div></div></div>
- <div class="section">Portfolio</div><div class="grid3"><div class="card"><div class="label">Imported Existing Policies</div><div class="metric">${importedRows.length}</div><div class="small">Included in Sales history by Inforce Date</div></div><div class="card"><div class="label">Active in Range</div><div class="metric">${importedRows.filter(c=>normalizeStatus(c.status)==='Inforce').length}</div><div class="small">Historical portfolio reference</div></div></div>
- <div class="section">Product Mix</div><div class="card"><div class="pieWrap"><div class="pie" style="background:${total?`conic-gradient(${grad})`:'#e5e7eb'} !important"></div><div class="legend">${Object.entries(groups).map(([k,v],i)=>`<div><span style="display:inline-block;flex:0 0 10px;width:10px;height:10px;margin-top:5px;border-radius:3px;background:${colors[i%colors.length]}"></span><span>${k} · ${total?(v/total*100).toFixed(1):'0.0'}%</span></div>`).join('')||'No sales in this period.'}</div></div></div>
+ <div class="section">Portfolio</div><div class="grid3"><div class="card"><div class="label">Imported Existing Policies</div><div class="metric">${importedRows.length}</div><div class="small">Included in Sales history by Inforce Date</div></div><div class="card"><div class="label">Active in Range</div><div class="metric">${importedRows.filter(c=>policyPortfolioActive(c)).length}</div><div class="small">Historical portfolio reference</div></div></div>
+ <div class="section">Product Mix</div><div class="card"><div class="pieWrap"><div class="pie" style="background:${total?`conic-gradient(${grad})`:'#e5e7eb'} !important"></div><div class="legend">${positiveGroups.map(([k,v],i)=>`<div><span style="display:inline-block;flex:0 0 10px;width:10px;height:10px;margin-top:5px;border-radius:3px;background:${colors[i%colors.length]}"></span><span>${k} · ${total?(v/total*100).toFixed(1):'0.0'}%</span></div>`).join('')||'No sales in this period.'}</div></div></div>
  <div class="section">Sales Trend · Line Chart</div><div class="card chartCard"><div class="chartZoomControls" aria-label="Line chart zoom controls"><span>Zoom</span><button type="button" class="secondary" onclick="zoomSalesChart(this,-1)" aria-label="Zoom out line chart">−</button><button type="button" class="secondary" onclick="zoomSalesChart(this,0)" aria-label="Reset line chart zoom">Reset</button><button type="button" class="secondary" onclick="zoomSalesChart(this,1)" aria-label="Zoom in line chart">+</button><span class="chartZoomLevel">100%</span></div>${lineChart}<div class="chartPointTooltip" aria-live="polite">Tap a point to see its cumulative TPC.</div><div class="chartLegend"><span><i class="dot"></i>Cumulative monthly TPC · each point includes all previous months in the selected range</span></div></div>
  <div class="section">Sales Breakdown · Bar Chart</div><div class="card chartCard"><div class="chartZoomControls" aria-label="Bar chart zoom controls"><span>Zoom</span><button type="button" class="secondary" onclick="zoomSalesChart(this,-1)" aria-label="Zoom out bar chart">−</button><button type="button" class="secondary" onclick="zoomSalesChart(this,0)" aria-label="Reset bar chart zoom">Reset</button><button type="button" class="secondary" onclick="zoomSalesChart(this,1)" aria-label="Zoom in bar chart">+</button><span class="chartZoomLevel">100%</span></div>${barChart}<div class="chartLegend"><span><i class="dot barLegend"></i>Monthly TPC · tap a bar to view that month’s cases</span></div></div>`
 }
@@ -2308,21 +2374,16 @@ function contestDate(v){const raw=String(v??'').trim();if(!raw)return '';const m
 function contestRows(x){
  const start=contestDate(x.start),end=contestDate(x.end);
  if(!start||!end||start>end)return [];
- return db.cases.filter(c=>{
-   const status=normalizeStatus(c.status);
-   const date=contestDate(c.inforce||c.inforce_date||c.inforceDate);
-   const product=normalizeProduct(c.product||c.type||'');
-   // Contest dates are inclusive. Existing portfolio policies are eligible too when their in-force date falls inside the contest.
-   return status==='Inforce'&&c.kind!=='Reduce'&&date>=start&&date<=end&&(x.type==='Any'||product===normalizeProduct(x.type));
- });
+ return salesTrackingRows(start,end,x.type==='Any'?'Any':normalizeProduct(x.type));
 }
-function contestAmount(x){const rows=contestRows(x);return x.metric==='TPC'?rows.reduce((sum,c)=>sum+tpc(c),0):rows.length}
+function contestPolicyCount(x){const start=contestDate(x.start),end=contestDate(x.end);if(!start||!end||start>end)return 0;return db.cases.filter(c=>c.inforce&&c.inforce>=start&&c.inforce<=end&&c.kind!=='Reduce'&&isHistoricalPolicyStatus(c.status)&&(x.type==='Any'||normalizeProduct(c.product||c.type||'')===normalizeProduct(x.type))).length}
+function contestAmount(x){const rows=contestRows(x);return x.metric==='TPC'?rows.reduce((sum,c)=>sum+tpc(c),0):rows.reduce((sum,c)=>sum+(c.kind==='Sales Motion'?(Number(c.salesCaseDelta)||0):1),0)}
 function contestValue(x){const amount=contestAmount(x);return x.metric==='TPC'?money(amount):amount+' cases'}
 function contest(){
  const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
  document.getElementById('contest').innerHTML=`<div class="contestPageHead"><div><div class="contestEyebrow">🏆 YOUR TARGETS, YOUR MOMENTUM</div><div class="section">Contest Tracker</div><div class="small">Track eligible in-force policies across each contest period.</div></div><button class="primary contestCreate" onclick="newContest()">＋ Create Contest</button></div>
  <div class="contestSummaryGrid"><div class="contestMiniCard"><span>🏁</span><div><small>Active contests</small><b>${db.contests.filter(x=>contestDate(x.start)<=iso(new Date())&&contestDate(x.end)>=iso(new Date())).length}</b></div></div><div class="contestMiniCard"><span>📈</span><div><small>Total contest TPC</small><b>${money(db.contests.reduce((sum,x)=>sum+(x.metric==='TPC'?contestAmount(x):0),0))}</b></div></div></div>
- <div class="contestList">${db.contests.map((x,i)=>{const amount=contestAmount(x),target=Math.max(0,Number(x.target)||0),pct=target>0?Math.min(100,amount/target*100):0,rows=contestRows(x),active=contestDate(x.start)<=iso(new Date())&&contestDate(x.end)>=iso(new Date());return `<article class="contestCard"><div class="contestCardTop"><div class="contestIcon">🏆</div><div class="contestTitle"><h3>${esc(x.name)}</h3><div class="contestMeta">${esc(contestDate(x.start)||x.start)} <span>→</span> ${esc(contestDate(x.end)||x.end)}</div><div class="contestChips"><span>${x.type==='Any'?'🌈 All Products':'🛡️ '+esc(x.type)}</span><span>${x.metric==='TPC'?'💎 TPC':'📋 Cases'}</span><span class="${active?'contestLive':'contestScheduled'}">${active?'● LIVE':'◷ SCHEDULED / ENDED'}</span></div></div><div class="contestActions"><button class="contestEdit" onclick="editContest(${i})" aria-label="Edit contest">✏️ Edit</button><button class="contestDelete" onclick="deleteContest(${i})" aria-label="Delete contest">Delete</button></div></div><div class="contestMetricRow"><div><small>${x.metric==='TPC'?'CURRENT TPC':'ELIGIBLE CASES'}</small><strong>${x.metric==='TPC'?money(amount):amount}</strong></div><div class="contestTarget"><small>TARGET</small><b>${x.metric==='TPC'?money(target):target+' cases'}</b></div></div><div class="contestProgressTrack"><i style="width:${pct.toFixed(1)}%"></i></div><div class="contestFoot"><span>${pct.toFixed(1)}% achieved</span><span>${rows.length} eligible policies</span></div></article>`}).join('')||'<div class="contestEmpty"><span>🏆</span><b>Your next win starts here.</b><p>Create a contest to track production, dates and progress.</p></div>'}</div>`;
+ <div class="contestList">${db.contests.map((x,i)=>{const amount=contestAmount(x),target=Math.max(0,Number(x.target)||0),pct=target>0?Math.min(100,amount/target*100):0,rows=contestRows(x),active=contestDate(x.start)<=iso(new Date())&&contestDate(x.end)>=iso(new Date());return `<article class="contestCard"><div class="contestCardTop"><div class="contestIcon">🏆</div><div class="contestTitle"><h3>${esc(x.name)}</h3><div class="contestMeta">${esc(contestDate(x.start)||x.start)} <span>→</span> ${esc(contestDate(x.end)||x.end)}</div><div class="contestChips"><span>${x.type==='Any'?'🌈 All Products':'🛡️ '+esc(x.type)}</span><span>${x.metric==='TPC'?'💎 TPC':'📋 Cases'}</span><span class="${active?'contestLive':'contestScheduled'}">${active?'● LIVE':'◷ SCHEDULED / ENDED'}</span></div></div><div class="contestActions"><button class="contestEdit" onclick="editContest(${i})" aria-label="Edit contest">✏️ Edit</button><button class="contestDelete" onclick="deleteContest(${i})" aria-label="Delete contest">Delete</button></div></div><div class="contestMetricRow"><div><small>${x.metric==='TPC'?'CURRENT TPC':'ELIGIBLE CASES'}</small><strong>${x.metric==='TPC'?money(amount):amount}</strong></div><div class="contestTarget"><small>TARGET</small><b>${x.metric==='TPC'?money(target):target+' cases'}</b></div></div><div class="contestProgressTrack"><i style="width:${pct.toFixed(1)}%"></i></div><div class="contestFoot"><span>${pct.toFixed(1)}% achieved</span><span>${contestPolicyCount(x)} policies in range · ${rows.filter(r=>r.kind==='Sales Motion').length} adjustments</span></div></article>`}).join('')||'<div class="contestEmpty"><span>🏆</span><b>Your next win starts here.</b><p>Create a contest to track production, dates and progress.</p></div>'}</div>`;
 }
 function contestFormValue(v){return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;')}
 function newContest(){showContestForm(-1)}
@@ -2344,7 +2405,7 @@ function saveContest(e,index=-1){
 function deleteContest(i){if(confirm('Delete this contest?')){db.contests.splice(i,1);save()}}
 
 function income(){
- let period=window.incomePeriod||'year',active=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'),now=new Date(),from=new Date(now.getFullYear(),now.getMonth(),1);
+ let period=window.incomePeriod||'year',active=db.cases.filter(c=>isHistoricalPolicyStatus(c.status)),now=new Date(),from=new Date(now.getFullYear(),now.getMonth(),1);
  // Keep the selector state on window so iOS Safari's inline change handler and render() use the same value.
  const rangeMonths={quarter:3,halfyear:6,year:12,'3y':36,'5y':60,'7y':84,'10y':120};
  if(period==='ytd')from=new Date(now.getFullYear(),0,1);
@@ -2353,10 +2414,10 @@ function income(){
  else if(period==='year')from=new Date(now.getFullYear(),now.getMonth()-11,1);
  else if(rangeMonths[period])from=new Date(now.getFullYear(),now.getMonth()-rangeMonths[period]+1,1);
  let months=[],cursor=new Date(from.getFullYear(),from.getMonth(),1);
- while(cursor<=now){let key=monthKey(cursor),v=active.reduce((sum,c)=>sum+monthlyComm(c,key+'-01'),0);months.push({key,v});cursor.setMonth(cursor.getMonth()+1)}
- let currentKey=monthKey(),utd=active.reduce((sum,c)=>sum+monthlyComm(c,currentKey+'-01'),0);
+ while(cursor<=now){let key=monthKey(cursor),v=active.reduce((sum,c)=>sum+monthlyPolicyCommissionAt(c,key),0)+incomeMotionsForMonth(key);months.push({key,v});cursor.setMonth(cursor.getMonth()+1)}
+ let currentKey=monthKey(),utd=active.reduce((sum,c)=>sum+monthlyPolicyCommissionAt(c,currentKey),0)+incomeMotionsForMonth(currentKey);
  // Increment is production written this month, based on Inforce Date, not Commencement Date.
- let increment=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((sum,c)=>sum+monthlyComm({...c,forceInforceCommissionStart:true},currentKey+'-01'),0);
+ let increment=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((sum,c)=>sum+monthlyComm({...c,forceInforceCommissionStart:true},currentKey+'-01'),0)+incomeMotionsForMonth(currentKey);
  let clients=clientRecords().length,existingActive=active.filter(c=>c.kind==='Existing Policy').length;
  const max=Math.max(...months.map(x=>x.v),1),rangeCount=months.length;
  // Keep chart bars clean: values are shown in the summary only after a month is selected.
@@ -2380,10 +2441,12 @@ window.incomeSelectedMonth=window.incomeSelectedMonth||'';
 function incomeSelectMonth(key){window.incomeSelectedMonth=key;render();const card=document.querySelector('.incomeChartCard');if(card)card.scrollIntoView({block:'nearest',behavior:'smooth'});}
 function incomeBreakdown(type){
  let date=monthKey()+'-01', rows=[];
- if(type==='increment') rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(monthKey())).map(c=>({c,v:monthlyComm({...c,forceInforceCommissionStart:true},date)})).filter(x=>x.v>0);
- else rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce').map(c=>({c,v:monthlyComm(c,date)})).filter(x=>x.v>0);
+ if(type==='increment') rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(monthKey())).map(c=>({c,v:monthlyComm({...c,forceInforceCommissionStart:true},date)})).filter(x=>x.v!==0);
+ else rows=db.cases.filter(c=>isHistoricalPolicyStatus(c.status)).map(c=>({c,v:monthlyPolicyCommissionAt(c,monthKey())})).filter(x=>x.v!==0);
+ const adjustments=(db.salesMotions||[]).filter(m=>String(m.date||'').startsWith(monthKey())&&(Number(m.incomeDelta)||0)!==0).map(m=>({c:{...m,kind:'Sales Adjustment',product:m.product,type:m.product,inforce:m.date},v:Number(m.incomeDelta)||0}));
+ rows=[...rows,...adjustments];
  let title=type==='increment'?'This Month Increment Breakdown':'Estimated UTD Monthly Income Breakdown';
- modal(title,`<div class="small" style="margin-bottom:12px">${rows.length} policy${rows.length===1?'':'ies'} · ${money(rows.reduce((s,x)=>s+x.v,0))}</div><div class="list">${rows.map(x=>`<div class="item"><div class="row"><div><b>${x.c.client}</b><div class="small">${x.c.product||x.c.type} · ${x.c.kind}</div><div class="small">Inforce ${dateStr(x.c.inforce)} · Commission ${Math.ceil((new Date(date).getFullYear()-new Date((cycleStart(x.c)||x.c.inforce)+'T00:00:00').getFullYear())*12+(new Date(date).getMonth()-new Date((cycleStart(x.c)||x.c.inforce)+'T00:00:00').getMonth())+1,0)/12} year</div></div><b>${money(x.v)}</b></div></div>`).join('')||'<div class="empty">No commission for this period.</div>'}</div>`,true)
+ modal(title,`<div class="small" style="margin-bottom:12px">${rows.length} items · ${money(rows.reduce((s,x)=>s+x.v,0))}</div><div class="list">${rows.map(x=>`<div class="item"><div class="row"><div><b>${x.c.client||'-'}</b><div class="small">${x.c.product||x.c.type||'-'} · ${x.c.kind==='Sales Adjustment'?'Sales Adjustment · '+(x.c.type||x.c.motionType||'Motion'):x.c.kind}</div><div class="small">${x.c.kind==='Sales Adjustment'?'Motion date ':'Inforce '}${dateStr(x.c.inforce)}</div></div><b>${money(x.v)}</b></div></div>`).join('')||'<div class="empty">No commission for this period.</div>'}</div>`,true)
 }
 function incomeMonthBreakdown(key){
  let rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce').map(c=>({c,v:monthlyComm(c,key+'-01')})).filter(x=>x.v>0);
@@ -2393,7 +2456,7 @@ function policyBreakdown(title){
  if(title==='Clients'){
   let rows=clientRecords();modal('Clients Breakdown',`<div class="small" style="margin-bottom:12px">${rows.length} clients</div><div class="list">${rows.map(c=>`<div class="item"><div class="row"><div><b>${c.client}</b><div class="small">${c.ic||'-'} · Group ${c.group||'-'}</div></div><b>${db.cases.filter(x=>(x.ic||x.client)===(c.ic||c.client)&&normalizeStatus(x.status)==='Inforce').length} policies</b></div></div>`).join('')||'<div class="empty">No clients.</div>'}</div>`,true)
  } else {
-  let rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce');modal('Active Policies Breakdown',`<div class="small" style="margin-bottom:12px">${rows.length} active policies</div><div class="list">${rows.map(c=>`<div class="item"><div class="row"><div><b>${c.client}</b><div class="small">${c.product||c.type} · ${c.kind}</div><div class="small">Inforce ${dateStr(c.inforce)} · ${c.policyNumber||'-'}</div></div><b>${money(monthlyComm(c,monthKey()+'-01'))}/mo</b></div></div>`).join('')||'<div class="empty">No active policies.</div>'}</div>`,true)
+  let rows=db.cases.filter(c=>policyPortfolioActive(c));modal('Active Policies Breakdown',`<div class="small" style="margin-bottom:12px">${rows.length} active policies</div><div class="list">${rows.map(c=>`<div class="item"><div class="row"><div><b>${c.client}</b><div class="small">${c.product||c.type} · ${c.kind}</div><div class="small">Inforce ${dateStr(c.inforce)} · ${c.policyNumber||'-'}</div></div><b>${money(monthlyPolicyCommissionAt(c,monthKey()))}/mo</b></div></div>`).join('')||'<div class="empty">No active policies.</div>'}</div>`,true)
  }
 }
 function settingOrderList(k, items){
@@ -2713,7 +2776,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
   parts.push(`<div class="coachPriority coachProduction"><div class="coachPriorityLabel blue">${monthLabel(selectedHomeDate()).toUpperCase()} PRODUCTION</div><div class="coachPriorityText"><b>${cases} case${cases===1?'':'s'} · ${money(tpcNow)} TPC</b> ${tpcNow>0?'Keep the momentum going.':'You still have time to build momentum this month.'}</div></div>`);
   return parts.join('');
 }
- function activePolicies(){return db.cases.filter(c=>normalizeStatus(c.status)==='Inforce')}
+ function activePolicies(){return db.cases.filter(c=>policyPortfolioActive(c))}
  function homeTPCPeriodInfo(view,now){
    const y=now.getFullYear(),m=now.getMonth(),q=Math.floor(m/3)+1,h=m<6?1:2;
    if(view==='quarter') {const qq=window.homeTPCQuarter||q, yy=window.homeTPCYear||y, start=new Date(yy,(qq-1)*3,1),end=new Date(yy,qq*3,0);const ps=new Date(yy,(qq-2)*3,1),pe=new Date(yy,(qq-1)*3,0);return {label:`Q${qq} ${yy}`,start:iso(start),end:iso(end),prevStart:iso(ps),prevEnd:iso(pe)}}
@@ -2730,7 +2793,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
      else if(view==='half'){const h=count-i;start=new Date(year,(h-1)*6,1);end=new Date(year,h*6,0);label=h===1?'1H':'2H';key=`${year}-${label}`;}
      else if(view==='year'){const m=count-1-i;start=new Date(year,m,1);end=new Date(year,m+1,0);label=start.toLocaleDateString('en-MY',{month:'short'});key=`${year}-${String(m+1).padStart(2,'0')}`;}
      else {start=new Date(now.getFullYear(),now.getMonth()-i,1);end=new Date(start.getFullYear(),start.getMonth()+1,0);label=start.toLocaleDateString('en-MY',{month:'short'});key=monthKey(start);}
-     const value=db.cases.filter(c=>c.inforce&&c.inforce>=iso(start)&&c.inforce<=iso(end)&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce').reduce((sum,c)=>sum+tpc(c),0);out.push({key,label,value});
+     const value=salesTPCInRange(iso(start),iso(end));out.push({key,label,value});
    }return out;
  }
  function homeTPCPeriodPicker(view,now){
