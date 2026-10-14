@@ -1793,7 +1793,7 @@ function sales(){
    ${cfg.view==='half'?`<div class="field"><label>Select Year</label><select onchange="salesCfg.year=+this.value;render()">${yearOptionsV10(cfg.year||now.getFullYear(),now.getFullYear()-20,now.getFullYear()+1)}</select></div><div class="field"><label>Select Half</label><select onchange="salesCfg.half=this.value;render()"><option value="first" ${cfg.half==='first'?'selected':''}>First Half (Jan–Jun)</option><option value="second" ${cfg.half==='second'?'selected':''}>Second Half (Jul–Dec)</option></select></div>`:''}
    ${cfg.view==='year'?`<div class="field"><label>Select Year</label><select onchange="salesCfg.year=+this.value;render()">${yearOptionsV10(cfg.year||now.getFullYear(),now.getFullYear()-20,now.getFullYear()+1)}</select></div><div class="field"><label>Period</label><select disabled><option>Whole Year (01 Jan – 31 Dec)</option></select></div>`:''}
    ${['3y','5y','7y','10y'].includes(cfg.view)?`<div class="field"><label>Ending Year</label><select onchange="salesCfg.year=+this.value;render()">${yearOptionsV10(cfg.year||now.getFullYear(),now.getFullYear()-20,now.getFullYear()+1)}</select></div><div class="field"><label>Period</label><select disabled><option>${cfg.view.slice(0,-1)} Years · Full Calendar Years</option></select></div>`:''}
-   ${cfg.view==='custom'?`<div class="field"><label>From</label><input id="salesFrom" type="date" value="${cfg.from||dates.from}"></div><div class="field"><label>To</label><input id="salesTo" type="date" value="${cfg.to||dates.to}"></div><div class="field full"><button type="button" class="primary" onclick="applyCustomSalesRangeV10()">Apply Date Range</button></div>`:''}
+   ${cfg.view==='custom'?`<div class="field salesDateField"><label>From</label><input id="salesFrom" type="date" value="${cfg.from||dates.from}"></div><div class="field salesDateField"><label>To</label><input id="salesTo" type="date" value="${cfg.to||dates.to}"></div><div class="field full"><button type="button" class="primary" onclick="applyCustomSalesRangeV10()">Apply Date Range</button></div>`:''}
  </div></div>
  <div class="card" style="margin-bottom:12px"><div class="label">Selected Production Range</div><div class="metric" style="font-size:19px">${formatDateRangeV10(dates.from,dates.to)}</div></div>
  <div class="grid3"><div class="card"><div class="label">Total Sales / TPC</div><div class="metric">${money(t)}</div></div><div class="card"><div class="label">Number of Cases</div><div class="metric">${cases}</div></div><div class="card"><div class="label">Average Case Size</div><div class="metric">${money(avg)}</div></div></div>
@@ -3541,6 +3541,13 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
 #sales .chartCard{min-width:0;overflow:hidden}
 @media(max-width:600px){#sales .pieWrap{grid-template-columns:1fr;justify-items:stretch;gap:12px}#sales .pie{width:170px}#sales .legend{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;font-size:12px}#sales .legend div{margin:4px 0}#sales .metric{overflow-wrap:anywhere}#sales .chartCard{padding:12px}}
 
+
+/* Sales custom date range: prevent iOS Safari's native date input from overflowing its card. */
+#sales .formgrid{grid-template-columns:repeat(2,minmax(0,1fr));width:100%;max-width:100%;min-width:0;}
+#sales .formgrid>.field{min-width:0;max-width:100%;width:100%;}
+#sales .formgrid>.salesDateField{grid-column:1 / -1;}
+#sales .salesDateField input[type="date"]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;padding-left:8px;padding-right:8px;font-size:16px;-webkit-appearance:none;appearance:none;}
+#sales .formgrid>.field.full{grid-column:1 / -1;}
 </style>
 <script id="home-tpc-global-handler-fix">
 // The Home TPC card uses a direct click handler. Expose the breakdown function for inline handlers.
