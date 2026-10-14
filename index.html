@@ -1557,7 +1557,7 @@ function annual(c){return c.payMode==='monthly'?+c.premium*12:c.payMode==='quart
 function tpc(c){return +c.tpc||annual(c)}
 function factor(c){return c.term==='10'?.5:c.term==='5'?.25:1}
 function duration(c){return c.term==='5'?5:6}
-function eligible(c){return ['Inforce','ROP Revoke','Revival'].includes(normalizeStatus(c.status))}
+function eligible(c){return ['Inforce','ROP','ROP Revoke','Revival'].includes(normalizeStatus(c.status))}
 function policyPortfolioActive(c){return ['Inforce','ROP','ROP Revoke','Revival'].includes(normalizeStatus(c.status))}
 function isHistoricalPolicyStatus(status){return ['Inforce','ROP','ROP Revoke','Lapse','Revival','Surrender','Ceased'].includes(normalizeStatus(status))}
 function salesMotionId(){return 'motion_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)}
@@ -1605,8 +1605,7 @@ function recordPolicyMotion(policy,oldStatus,newStatus,formData){
  }
  if(next==='ROP Revoke'&&old==='ROP'){
    const prior=[...(db.salesMotions||[])].reverse().find(m=>String(m.caseId)===caseId&&m.type==='ROP'&&!m.reversedBy);
-   if(!prior)return null;
-   const m=addSalesMotion(policy,'ROP Revoke',date,{tpcDelta:Math.abs(tpc(policy)),caseDelta:1,incomeDelta:Math.abs(Number(prior.incomeDelta)||0)});prior.reversedBy=m.id;return m;
+   const m=addSalesMotion(policy,'ROP Revoke',date,{tpcDelta:Math.abs(tpc(policy)),caseDelta:1,incomeDelta:Math.abs(Number(prior?.incomeDelta)||0)});if(prior)prior.reversedBy=m.id;return m;
  }
  if(next==='Lapse'){
    if(formData.lapseNegativeTPC==='yes')return addSalesMotion(policy,'Lapse (negative TPC)',date,{tpcDelta:-Math.abs(tpc(policy)),caseDelta:-1,negativeTPC:true});
@@ -1614,8 +1613,7 @@ function recordPolicyMotion(policy,oldStatus,newStatus,formData){
  }
  if(next==='Revival'&&old==='Lapse'){
    const prior=[...(db.salesMotions||[])].reverse().find(m=>String(m.caseId)===caseId&&m.type==='Lapse (negative TPC)'&&m.negativeTPC&&!m.reversedBy);
-   if(!prior)return null;
-   const m=addSalesMotion(policy,'Revival',date,{tpcDelta:Math.abs(tpc(policy)),caseDelta:1});prior.reversedBy=m.id;return m;
+   const m=addSalesMotion(policy,'Revival',date,{tpcDelta:prior?Math.abs(tpc(policy)):0,caseDelta:prior?1:0});if(prior)prior.reversedBy=m.id;return m;
  }
  return null;
 }
@@ -1638,6 +1636,28 @@ const TXT={zh:{home:'首页',pipeline:'Pipeline',sales:'Sales',clients:'客户',
 function L(k){return (TXT[appLang]||TXT.en)[k]||k}
 function toggleLang(){appLang=appLang==='zh'?'en':'zh';localStorage.setItem('salesTrackerLang',appLang);render()}
 function setThemeMode(mode){db.settings.theme=mode;localStorage.setItem('salesTrackerTheme',mode);applyTheme();if(window.cloudScheduleSync)window.cloudScheduleSync();render()}
+// Lightweight tap feedback: short UI tone + haptic where the browser/device supports it.
+(function installTapFeedbackV12(){
+ if(window.__salesTapFeedbackV12)return;window.__salesTapFeedbackV12=true;
+ let audioCtx=null,lastTap=0;
+ function feedback(){
+  const now=Date.now();if(now-lastTap<45)return;lastTap=now;
+  try{if(navigator.vibrate)navigator.vibrate(10)}catch(e){}
+  try{
+   const Ctx=window.AudioContext||window.webkitAudioContext;
+   if(!Ctx)return;
+   audioCtx=audioCtx||new Ctx();
+   if(audioCtx.state==='suspended')audioCtx.resume().catch(()=>{});
+   const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
+   osc.type='sine';osc.frequency.setValueAtTime(880,audioCtx.currentTime);
+   osc.frequency.exponentialRampToValueAtTime(660,audioCtx.currentTime+0.035);
+   gain.gain.setValueAtTime(0.0001,audioCtx.currentTime);gain.gain.exponentialRampToValueAtTime(0.035,audioCtx.currentTime+0.006);gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.045);
+   osc.connect(gain);gain.connect(audioCtx.destination);osc.start();osc.stop(audioCtx.currentTime+0.05);
+  }catch(e){}
+ }
+ document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('button,[role="button"],.tab,.navBtn'))feedback()},true);
+ document.addEventListener('change',e=>{if(e.target&&e.target.matches&&e.target.matches('input,select,textarea'))feedback()},true);
+})();
 function render(){applyTheme();document.getElementById('brandSub').textContent='Insurance CRM · V2.0 Cloud';document.getElementById('newCaseBtn').textContent=L('newCase');const labels=['home','pipeline','sales','clients','coverage','contest','income','settings'];document.querySelectorAll('#nav button').forEach((b,i)=>b.textContent=L(labels[i]));[['home',home],['pipeline',pipeline],['sales',sales],['clients',clients],['coverage',coverage],['contest',contest],['income',income],['settings',settings]].forEach(([id,fn])=>{try{fn()}catch(err){console.error('Sales Tracker render error in '+id,err);const el=document.getElementById(id);if(el)el.innerHTML='<div class="card"><b>'+id+' failed to load</b><div class="small" style="margin-top:8px">Please refresh the app. Other sections remain available.</div></div>'}})}
 
 function startCase(){modal('New Case',`<div class="menuGrid"><button class="menuBtn" onclick="chooseNB()">New Business<span>New policy / new sale</span></button><button class="menuBtn" onclick="chooseTU()">Top Up<span>Upgrade an existing policy</span></button></div>`)}
@@ -1674,7 +1694,7 @@ function caseForm(mode,ic='',reduceId=''){
  let title=isReduce?'Reduce Policy':mode==='topup'?'Top Up':mode==='existing'?'New Business · Existing Client':'New Business · New Client';
  let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','ROP','ROP Revoke','Lapse','Revival','Surrender','Ceased'];
  let benefits=JSON.parse(c.benefit||'{}');
- let currentStatus=normalizeStatus(c.status||'To Approach');
+ let currentStatus=normalizeStatus(c.policyMotionStatus||c.status||'To Approach');
  let inforceVisible=['Inforce','ROP','ROP Revoke','Revival'].includes(currentStatus);
  let benefitBlock=benefitFields(benefits);
  modal(title,`<form class="newClientForm" onsubmit="saveCaseForm(event,'${mode}','${reduceId}')"><div class="formgrid">
@@ -1693,7 +1713,8 @@ function caseForm(mode,ic='',reduceId=''){
  </div><div class="actions newClientActions">${mode==='edit'?`<button type="button" class="danger deleteClientBtn" onclick="deleteClient('${c.ic||''}')">Delete Client</button>`:''}<button type="button" class="secondary" onclick="closeModal()">Cancel</button><button class="primary newClientSave"><span>＋</span> Save ${mode==='edit'?'Changes':'New Case'} <b>→</b></button></div></form>`);
  let f=document.querySelector('.modal form'),p=f.querySelector('#premium'),pm=f.querySelector('#payMode'),t=f.querySelector('#tpc'),st=f.querySelector('#caseStatus'),df=f.querySelector('#inforceDateField'),inf=f.querySelector('#caseInforce');
  function calc(){let x=+p.value||0;t.value=(pm.value==='monthly'?x*12:pm.value==='quarterly'?x*4:pm.value==='halfyearly'?x*2:x).toFixed(2)}
- const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement'),motionDateField=document.getElementById('salesMotionDateField'),motionDateLabel=document.getElementById('salesMotionDateLabel'),motionDateInput=document.getElementById('salesMotionDate'),lapseNegativeField=document.getElementById('lapseNegativeTPCField');function updateCommencement(){const next=calculatedCommencement(inf.value);comm.value=next;comm.setAttribute('value',next);comm.dataset.auto='1'}function syncInforce(){const status=normalizeStatus(st.value),yes=['Inforce','ROP','ROP Revoke','Revival'].includes(status);df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());updateCommencement();if(motionDateField){const motion=['ROP','ROP Revoke','Lapse','Revival'].includes(status);motionDateField.style.display=motion?'':'none';if(motionDateInput&&!motionDateInput.value)motionDateInput.value=iso(new Date());if(motionDateLabel)motionDateLabel.textContent=status==='ROP'?'ROP Trigger Date':status==='ROP Revoke'?'ROP Revoke Date':status==='Lapse'?'Lapse Date':'Revival Date'}if(lapseNegativeField)lapseNegativeField.style.display=status==='Lapse'?'':'none'}inf.addEventListener('input',updateCommencement);inf.addEventListener('change',updateCommencement);inf.addEventListener('blur',updateCommencement);
+ let lastMotionStatus=currentStatus;
+ const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement'),motionDateField=document.getElementById('salesMotionDateField'),motionDateLabel=document.getElementById('salesMotionDateLabel'),motionDateInput=document.getElementById('salesMotionDate'),lapseNegativeField=document.getElementById('lapseNegativeTPCField');function updateCommencement(){const next=calculatedCommencement(inf.value);comm.value=next;comm.setAttribute('value',next);comm.dataset.auto='1'}function syncInforce(){const status=normalizeStatus(st.value);if(status!==lastMotionStatus){if(motionDateInput)motionDateInput.value=iso(new Date());lastMotionStatus=status}const yes=['Inforce','ROP','ROP Revoke','Revival'].includes(status);df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());updateCommencement();if(motionDateField){const motion=['ROP','ROP Revoke','Lapse','Revival'].includes(status);motionDateField.style.display=motion?'':'none';if(motionDateInput&&!motionDateInput.value)motionDateInput.value=iso(new Date());if(motionDateLabel)motionDateLabel.textContent=status==='ROP'?'ROP Trigger Date':status==='ROP Revoke'?'ROP Revoke Date':status==='Lapse'?'Lapse Date':'Revival Date'}if(lapseNegativeField)lapseNegativeField.style.display=status==='Lapse'?'':'none'}inf.addEventListener('input',updateCommencement);inf.addEventListener('change',updateCommencement);inf.addEventListener('blur',updateCommencement);
  p.oninput=calc;pm.onchange=calc;st.onchange=syncInforce;calc();syncInforce()
 }
 
@@ -1702,9 +1723,15 @@ function saveCaseForm(e,mode,reduceId){
  let fd=new FormData(e.target),o=Object.fromEntries(fd.entries());
  const editingId=reduceId||'';
  const existing=editingId?db.cases.find(c=>String(c.id)===String(editingId)):null;
- const oldStatus=existing?normalizeStatus(existing.status):'To Approach';
- const newStatus=normalizeStatus(o.status||oldStatus);
- o.status=newStatus;
+ const oldStatus=existing?normalizeStatus(existing.policyMotionStatus||existing.status):'To Approach';
+ const selectedStatus=normalizeStatus(o.status||oldStatus);
+ const newStatus=(oldStatus==='ROP'&&selectedStatus==='Inforce')?'ROP Revoke':selectedStatus;
+ // ROP is a sales-motion overlay: keep the underlying policy Inforce and active.
+ // Returning directly to Inforce from ROP is treated as a Revoke event so the negative entry cannot remain stranded.
+ const storedStatus=(newStatus==='ROP'||newStatus==='ROP Revoke'||newStatus==='Revival')?'Inforce':newStatus;
+ if(oldStatus==='ROP'&&selectedStatus==='Inforce')o.motionDate=iso(new Date());
+ o.status=storedStatus;
+ o.policyMotionStatus=newStatus==='ROP'?'ROP':(newStatus==='Lapse'?'Lapse':'');
  o.product=normalizeProduct(o.product);
  o.id=editingId||Date.now().toString();
  o.premium=+o.premium||0;
@@ -1725,15 +1752,15 @@ function saveCaseForm(e,mode,reduceId){
    o.parentId=parent?.id||'';
  }
  if(existing){
-   const merged={...existing,...o,status:newStatus};
-   if(oldStatus!==newStatus){try{behaviourRecordTransition(oldStatus,newStatus,merged,behaviourDate(new Date()));}catch(err){console.error('Vital Behaviour record failed',err);}}
+   const merged={...existing,...o,status:storedStatus};
+   if(normalizeStatus(existing.status)!==storedStatus){try{behaviourRecordTransition(normalizeStatus(existing.status),storedStatus,merged,behaviourDate(new Date()));}catch(err){console.error('Vital Behaviour record failed',err);}}
    const idx=db.cases.findIndex(c=>String(c.id)===String(editingId));
    if(idx>=0) db.cases[idx]=merged;
    const motion=recordPolicyMotion(merged,oldStatus,newStatus,o);
    if(motion&&['ROP','ROP Revoke','Lapse (negative TPC)','Revival'].includes(motion.type))merged.motionDate=motion.date;
  }else{
    db.cases.push(o);
-   if(newStatus!=='To Approach'){try{behaviourRecordTransition('To Approach',newStatus,o,behaviourDate(new Date()));}catch(err){console.error('Vital Behaviour record failed',err);}}
+   if(newStatus!=='To Approach'){try{behaviourRecordTransition('To Approach',storedStatus,o,behaviourDate(new Date()));}catch(err){console.error('Vital Behaviour record failed',err);}}
  }
  localStorage.setItem(KEY,JSON.stringify(db));
  if(window.cloudReady)window.cloudScheduleSync?.();
@@ -2383,7 +2410,7 @@ function contest(){
  const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
  document.getElementById('contest').innerHTML=`<div class="contestPageHead"><div><div class="contestEyebrow">🏆 YOUR TARGETS, YOUR MOMENTUM</div><div class="section">Contest Tracker</div><div class="small">Track eligible in-force policies across each contest period.</div></div><button class="primary contestCreate" onclick="newContest()">＋ Create Contest</button></div>
  <div class="contestSummaryGrid"><div class="contestMiniCard"><span>🏁</span><div><small>Active contests</small><b>${db.contests.filter(x=>contestDate(x.start)<=iso(new Date())&&contestDate(x.end)>=iso(new Date())).length}</b></div></div><div class="contestMiniCard"><span>📈</span><div><small>Total contest TPC</small><b>${money(db.contests.reduce((sum,x)=>sum+(x.metric==='TPC'?contestAmount(x):0),0))}</b></div></div></div>
- <div class="contestList">${db.contests.map((x,i)=>{const amount=contestAmount(x),target=Math.max(0,Number(x.target)||0),pct=target>0?Math.min(100,amount/target*100):0,rows=contestRows(x),active=contestDate(x.start)<=iso(new Date())&&contestDate(x.end)>=iso(new Date());return `<article class="contestCard"><div class="contestCardTop"><div class="contestIcon">🏆</div><div class="contestTitle"><h3>${esc(x.name)}</h3><div class="contestMeta">${esc(contestDate(x.start)||x.start)} <span>→</span> ${esc(contestDate(x.end)||x.end)}</div><div class="contestChips"><span>${x.type==='Any'?'🌈 All Products':'🛡️ '+esc(x.type)}</span><span>${x.metric==='TPC'?'💎 TPC':'📋 Cases'}</span><span class="${active?'contestLive':'contestScheduled'}">${active?'● LIVE':'◷ SCHEDULED / ENDED'}</span></div></div><div class="contestActions"><button class="contestEdit" onclick="editContest(${i})" aria-label="Edit contest">✏️ Edit</button><button class="contestDelete" onclick="deleteContest(${i})" aria-label="Delete contest">Delete</button></div></div><div class="contestMetricRow"><div><small>${x.metric==='TPC'?'CURRENT TPC':'ELIGIBLE CASES'}</small><strong>${x.metric==='TPC'?money(amount):amount}</strong></div><div class="contestTarget"><small>TARGET</small><b>${x.metric==='TPC'?money(target):target+' cases'}</b></div></div><div class="contestProgressTrack"><i style="width:${pct.toFixed(1)}%"></i></div><div class="contestFoot"><span>${pct.toFixed(1)}% achieved</span><span>${contestPolicyCount(x)} policies in range · ${rows.filter(r=>r.kind==='Sales Motion').length} adjustments</span></div></article>`}).join('')||'<div class="contestEmpty"><span>🏆</span><b>Your next win starts here.</b><p>Create a contest to track production, dates and progress.</p></div>'}</div>`;
+ <div class="contestList">${db.contests.map((x,i)=>{const amount=contestAmount(x),target=Math.max(0,Number(x.target)||0),pct=target>0?Math.min(100,amount/target*100):0,rows=contestRows(x),today=iso(new Date()),startDate=contestDate(x.start),endDate=contestDate(x.end),active=startDate<=today&&endDate>=today,daysLeft=Math.round((new Date(endDate+'T00:00:00').getTime()-new Date(today+'T00:00:00').getTime())/86400000),countdown=active?(daysLeft===0?'⏳ Last day':`⏳ ${daysLeft} days left`):(today<startDate?`🗓️ Starts in ${Math.max(0,Math.ceil((new Date(startDate+'T00:00:00').getTime()-new Date(today+'T00:00:00').getTime())/86400000))} days`:`🏁 Ended ${Math.max(0,Math.round((new Date(today+'T00:00:00').getTime()-new Date(endDate+'T00:00:00').getTime())/86400000))} days ago`);return `<article class="contestCard"><div class="contestCardTop"><div class="contestIcon">🏆</div><div class="contestTitle"><h3>${esc(x.name)}</h3><div class="contestMeta">${esc(contestDate(x.start)||x.start)} <span>→</span> ${esc(contestDate(x.end)||x.end)}</div><div class="contestChips"><span>${x.type==='Any'?'🌈 All Products':'🛡️ '+esc(x.type)}</span><span>${x.metric==='TPC'?'💎 TPC':'📋 Cases'}</span><span class="${active?'contestLive':'contestScheduled'}">${active?'● LIVE':'◷ SCHEDULED / ENDED'}</span><span class="contestCountdown">${esc(countdown)}</span></div></div><div class="contestActions"><button class="contestEdit" onclick="editContest(${i})" aria-label="Edit contest">✏️ Edit</button><button class="contestDelete" onclick="deleteContest(${i})" aria-label="Delete contest">Delete</button></div></div><div class="contestMetricRow"><div><small>${x.metric==='TPC'?'CURRENT TPC':'ELIGIBLE CASES'}</small><strong>${x.metric==='TPC'?money(amount):amount}</strong></div><div class="contestTarget"><small>TARGET</small><b>${x.metric==='TPC'?money(target):target+' cases'}</b></div></div><div class="contestProgressTrack"><i style="width:${pct.toFixed(1)}%"></i></div><div class="contestFoot"><span>${pct.toFixed(1)}% achieved</span><span>${contestPolicyCount(x)} policies in range · ${rows.filter(r=>r.kind==='Sales Motion').length} adjustments</span></div></article>`}).join('')||'<div class="contestEmpty"><span>🏆</span><b>Your next win starts here.</b><p>Create a contest to track production, dates and progress.</p></div>'}</div>`;
 }
 function contestFormValue(v){return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;')}
 function newContest(){showContestForm(-1)}
@@ -3762,4 +3789,7 @@ window.applyHomeTPCPeriod = applyHomeTPCPeriod;
  document.addEventListener('touchend',function(e){const card=e.target&&e.target.closest&&e.target.closest('[data-home-tpc-tap="1"]');if(!card)return;if(typeof window.tapHomeTPCBreakdown==='function')window.tapHomeTPCBreakdown(e);},{capture:true,passive:false});
 })();
 </script>
+
+<style id="contestCountdownFeedbackV12">.contestCountdown{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:6px 10px;border-radius:999px;background:rgba(55,115,255,.09);color:var(--accent,#3978f6);font-size:12px;font-weight:750;letter-spacing:.01em}.contestActions button,.contestCreate,button{touch-action:manipulation}@media(prefers-reduced-motion:no-preference){button,.contestCard,.card{transition:transform .14s ease,box-shadow .18s ease}button:active{transform:scale(.975)}}
+</style>
 </body></html>
