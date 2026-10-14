@@ -1436,6 +1436,36 @@ body:not(.cloudLocked) main{
 @media(max-width:600px){.incomeChartCard{padding:16px 12px 12px}.incomeChartHead .small{max-width:100%;line-height:1.45}.incomeChartLegend{display:none}.incomeChartGrid{gap:7px;height:195px}.incomeBarItem{flex-basis:39px;width:39px;min-width:39px}.incomeBarTrack{height:145px}.incomeBarValue{font-size:9px}.incomeChartSummary{gap:8px;padding:12px}.incomePeriodSelect{min-width:118px;font-size:14px}}
 
 </style>
+
+<style id="v29-emoji-icons-contest-edit">
+.quickAction b{font-size:25px!important;line-height:1;display:grid;place-items:center}
+.pipeIcon{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Apple Color Emoji","Segoe UI Emoji",sans-serif!important;font-size:27px!important;line-height:1;display:grid;place-items:center}
+.contestActions{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.contestEdit,.contestDelete{white-space:nowrap;min-height:36px;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-weight:750;cursor:pointer}
+.contestEdit{border:1px solid rgba(56,120,255,.2);background:linear-gradient(135deg,rgba(226,239,255,.96),rgba(238,232,255,.96));color:#3269d7;border-radius:13px;padding:8px 11px;font-size:12px}
+.contestDelete{padding:8px 10px;font-size:11px}
+.contestCardTop{align-items:flex-start}
+.contestTitle{min-width:0;flex:1}
+@media(max-width:430px){.contestActions{flex-direction:column;align-items:stretch}.contestEdit,.contestDelete{min-height:32px;padding:6px 8px}.contestCardTop{gap:8px}}
+</style>
+
+<style id="sticky-sales-header-fix">
+/* Keep the main Sales Tracker header visible while the page scrolls on mobile and desktop. */
+.top{
+  position:sticky!important;
+  top:0!important;
+  z-index:1000!important;
+  align-self:stretch;
+  background:rgba(247,249,252,.88)!important;
+  -webkit-backdrop-filter:blur(24px) saturate(160%)!important;
+  backdrop-filter:blur(24px) saturate(160%)!important;
+  border-bottom:1px solid rgba(220,226,237,.72)!important;
+  box-shadow:0 8px 24px rgba(24,39,75,.045)!important;
+}
+@supports (padding-top: env(safe-area-inset-top)){
+  .top{scroll-margin-top:env(safe-area-inset-top)}
+}
+</style>
 </head>
 <body>
 <div class="app">
@@ -2292,10 +2322,25 @@ function contest(){
  const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
  document.getElementById('contest').innerHTML=`<div class="contestPageHead"><div><div class="contestEyebrow">🏆 YOUR TARGETS, YOUR MOMENTUM</div><div class="section">Contest Tracker</div><div class="small">Track eligible in-force policies across each contest period.</div></div><button class="primary contestCreate" onclick="newContest()">＋ Create Contest</button></div>
  <div class="contestSummaryGrid"><div class="contestMiniCard"><span>🏁</span><div><small>Active contests</small><b>${db.contests.filter(x=>contestDate(x.start)<=iso(new Date())&&contestDate(x.end)>=iso(new Date())).length}</b></div></div><div class="contestMiniCard"><span>📈</span><div><small>Total contest TPC</small><b>${money(db.contests.reduce((sum,x)=>sum+(x.metric==='TPC'?contestAmount(x):0),0))}</b></div></div></div>
- <div class="contestList">${db.contests.map((x,i)=>{const amount=contestAmount(x),target=Math.max(0,Number(x.target)||0),pct=target>0?Math.min(100,amount/target*100):0,rows=contestRows(x),active=contestDate(x.start)<=iso(new Date())&&contestDate(x.end)>=iso(new Date());return `<article class="contestCard"><div class="contestCardTop"><div class="contestIcon">🏆</div><div class="contestTitle"><h3>${esc(x.name)}</h3><div class="contestMeta">${esc(contestDate(x.start)||x.start)} <span>→</span> ${esc(contestDate(x.end)||x.end)}</div><div class="contestChips"><span>${x.type==='Any'?'🌈 All Products':'🛡️ '+esc(x.type)}</span><span>${x.metric==='TPC'?'💎 TPC':'📋 Cases'}</span><span class="${active?'contestLive':'contestScheduled'}">${active?'● LIVE':'◷ SCHEDULED / ENDED'}</span></div></div><button class="contestDelete" onclick="deleteContest(${i})" aria-label="Delete contest">Delete</button></div><div class="contestMetricRow"><div><small>${x.metric==='TPC'?'CURRENT TPC':'ELIGIBLE CASES'}</small><strong>${x.metric==='TPC'?money(amount):amount}</strong></div><div class="contestTarget"><small>TARGET</small><b>${x.metric==='TPC'?money(target):target+' cases'}</b></div></div><div class="contestProgressTrack"><i style="width:${pct.toFixed(1)}%"></i></div><div class="contestFoot"><span>${pct.toFixed(1)}% achieved</span><span>${rows.length} eligible policies</span></div></article>`}).join('')||'<div class="contestEmpty"><span>🏆</span><b>Your next win starts here.</b><p>Create a contest to track production, dates and progress.</p></div>'}</div>`;
+ <div class="contestList">${db.contests.map((x,i)=>{const amount=contestAmount(x),target=Math.max(0,Number(x.target)||0),pct=target>0?Math.min(100,amount/target*100):0,rows=contestRows(x),active=contestDate(x.start)<=iso(new Date())&&contestDate(x.end)>=iso(new Date());return `<article class="contestCard"><div class="contestCardTop"><div class="contestIcon">🏆</div><div class="contestTitle"><h3>${esc(x.name)}</h3><div class="contestMeta">${esc(contestDate(x.start)||x.start)} <span>→</span> ${esc(contestDate(x.end)||x.end)}</div><div class="contestChips"><span>${x.type==='Any'?'🌈 All Products':'🛡️ '+esc(x.type)}</span><span>${x.metric==='TPC'?'💎 TPC':'📋 Cases'}</span><span class="${active?'contestLive':'contestScheduled'}">${active?'● LIVE':'◷ SCHEDULED / ENDED'}</span></div></div><div class="contestActions"><button class="contestEdit" onclick="editContest(${i})" aria-label="Edit contest">✏️ Edit</button><button class="contestDelete" onclick="deleteContest(${i})" aria-label="Delete contest">Delete</button></div></div><div class="contestMetricRow"><div><small>${x.metric==='TPC'?'CURRENT TPC':'ELIGIBLE CASES'}</small><strong>${x.metric==='TPC'?money(amount):amount}</strong></div><div class="contestTarget"><small>TARGET</small><b>${x.metric==='TPC'?money(target):target+' cases'}</b></div></div><div class="contestProgressTrack"><i style="width:${pct.toFixed(1)}%"></i></div><div class="contestFoot"><span>${pct.toFixed(1)}% achieved</span><span>${rows.length} eligible policies</span></div></article>`}).join('')||'<div class="contestEmpty"><span>🏆</span><b>Your next win starts here.</b><p>Create a contest to track production, dates and progress.</p></div>'}</div>`;
 }
-function newContest(){modal('🏆 Create Contest',`<form onsubmit="saveContest(event)" class="contestForm"><div class="formgrid"><div class="field"><label>Contest Name</label><input name="name" required placeholder="e.g. Starclub 2026"></div><div class="field"><label>Metric</label><select name="metric"><option value="TPC">TPC</option><option value="Cases">Cases</option></select></div><div class="field"><label>Start</label><input name="start" type="date" required value="${monthKey()}-01"></div><div class="field"><label>End</label><input name="end" type="date" required value="${iso(new Date())}"></div><div class="field"><label>Product / Insurance Type</label><select name="type"><option value="Any">Any · All Products</option>${allProducts().map(p=>`<option value="${String(p).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">${String(p).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</option>`).join('')}</select></div><div class="field"><label>Target</label><input name="target" type="number" min="0" step="any" required placeholder="Enter target"></div></div><div class="actions"><button class="primary">Create Contest ✨</button></div></form>`,true)}
-function saveContest(e){e.preventDefault();let o=Object.fromEntries(new FormData(e.target).entries());o.type=o.type==='Any'?'Any':normalizeProduct(o.type);o.target=+o.target;if(!contestDate(o.start)||!contestDate(o.end)||contestDate(o.start)>contestDate(o.end)){alert('Please check the contest dates. End date must be on or after start date.');return}db.contests.push(o);closeModal();save()}
+function contestFormValue(v){return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;')}
+function newContest(){showContestForm(-1)}
+function editContest(i){if(!db.contests[i])return;showContestForm(i)}
+function showContestForm(index){
+ const editing=index>=0,x=editing?db.contests[index]:{name:'',metric:'TPC',start:monthKey()+'-01',end:iso(new Date()),type:'Any',target:''};
+ const productOptions=allProducts().map(p=>`<option value="${contestFormValue(p)}" ${normalizeProduct(p)===normalizeProduct(x.type)?'selected':''}>${contestFormValue(p)}</option>`).join('');
+ modal(editing?'✏️ Edit Contest':'🏆 Create Contest',`<form onsubmit="saveContest(event,${index})" class="contestForm"><div class="formgrid"><div class="field full"><label>Contest Name</label><input name="name" required placeholder="e.g. Starclub 2026" value="${contestFormValue(x.name)}"></div><div class="field"><label>Metric</label><select name="metric"><option value="TPC" ${x.metric==='TPC'?'selected':''}>TPC</option><option value="Cases" ${x.metric==='Cases'?'selected':''}>Cases</option></select></div><div class="field"><label>Start</label><input name="start" type="date" required value="${contestFormValue(contestDate(x.start)||x.start||monthKey()+'-01')}"></div><div class="field"><label>End</label><input name="end" type="date" required value="${contestFormValue(contestDate(x.end)||x.end||iso(new Date()))}"></div><div class="field"><label>Product / Insurance Type</label><select name="type"><option value="Any" ${x.type==='Any'?'selected':''}>Any · All Products</option>${productOptions}</select></div><div class="field"><label>Target</label><input name="target" type="number" min="0" step="any" required placeholder="Enter target" value="${contestFormValue(x.target)}"></div></div><div class="actions"><button class="primary">${editing?'Save Changes ✓':'Create Contest ✨'}</button></div></form>`,true)
+}
+function saveContest(e,index=-1){
+ e.preventDefault();
+ let o=Object.fromEntries(new FormData(e.target).entries());
+ o.type=o.type==='Any'?'Any':normalizeProduct(o.type);o.target=+o.target;
+ if(!contestDate(o.start)||!contestDate(o.end)||contestDate(o.start)>contestDate(o.end)){alert('Please check the contest dates. End date must be on or after start date.');return}
+ if(index>=0){if(!db.contests[index])return;db.contests[index]={...db.contests[index],...o}}
+ else db.contests.push(o);
+ closeModal();save()
+}
 function deleteContest(i){if(confirm('Delete this contest?')){db.contests.splice(i,1);save()}}
 
 function income(){
@@ -2763,10 +2808,10 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
       <div class="heroBarLabels">${bars.map(v=>`<span>${v.label}</span>`).join('')}</div>
       <div class="small">${period.label} production · Tap to view breakdown</div></div>
     <div class="quickStats"><div class="card quickStat breakdownTap" onclick="homeProductionBreakdown('Cases')"><div class="qIcon">▤</div><div><div class="qLabel">${view==='month'?'Cases this month':'Cases in period'}</div><div class="qValue">${cases}</div></div></div><div class="card quickStat breakdownTap" onclick="homePendingBreakdown()"><div class="qIcon orange">◷</div><div><div class="qLabel">Pending</div><div class="qValue">${pending}</div></div></div></div>
-    <div class="quickActions"><button class="quickAction" onclick="startCase()"><b>＋</b>New Case</button><button class="quickAction" onclick="caseForm('new')"><b>♙</b>Add Client</button><button class="quickAction" onclick="show('coverage',null)"><b>▤</b>Policy Review</button><button class="quickAction" onclick="importExcel()"><b>↑</b>Import</button></div>
+    <div class="quickActions"><button class="quickAction" onclick="startCase()"><b>➕</b>New Case</button><button class="quickAction" onclick="caseForm('new')"><b>👤</b>Add Client</button><button class="quickAction" onclick="show('coverage',null)"><b>📋</b>Policy Review</button><button class="quickAction" onclick="importExcel()"><b>📥</b>Import</button></div>
     <div class="card pipelineOverviewWrap">
       <div class="pipelineOverviewHead"><h3>Pipeline Overview</h3><button class="pipelineOverviewSub pipelineViewAllBtn" type="button" onclick="show('pipeline')">Tap to view</button></div>
-      <div class="pipelineMini pipelineOverview"><div class="card pipeMini approach" onclick="homePipelineBreakdown('To Approach')" role="button" tabindex="0"><div class="pipeIcon">♙</div><div class="pipeInfo"><div class="n">${db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='To Approach').length}</div><div class="s">To Approach</div></div></div><div class="card pipeMini follow" onclick="homePipelineBreakdown('To Follow Up')" role="button" tabindex="0"><div class="pipeIcon">◷</div><div class="pipeInfo"><div class="n">${follow}</div><div class="s">To Follow Up</div></div></div><div class="card pipeMini meet" onclick="homePipelineBreakdown('To Meet Up')" role="button" tabindex="0"><div class="pipeIcon">▣</div><div class="pipeInfo"><div class="n">${meet}</div><div class="s">To Meet Up</div></div></div><div class="card pipeMini submit" onclick="homePipelineBreakdown('To Submit')" role="button" tabindex="0"><div class="pipeIcon">▤</div><div class="pipeInfo"><div class="n">${submit}</div><div class="s">To Submit</div></div></div><div class="card pipeMini approve" onclick="homePipelineBreakdown('To Approve')" role="button" tabindex="0"><div class="pipeIcon">♢</div><div class="pipeInfo"><div class="n">${approve}</div><div class="s">To Approve</div></div></div></div>
+      <div class="pipelineMini pipelineOverview"><div class="card pipeMini approach" onclick="homePipelineBreakdown('To Approach')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">👤</div><div class="pipeInfo"><div class="n">${db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='To Approach').length}</div><div class="s">To Approach</div></div></div><div class="card pipeMini follow" onclick="homePipelineBreakdown('To Follow Up')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">⏰</div><div class="pipeInfo"><div class="n">${follow}</div><div class="s">To Follow Up</div></div></div><div class="card pipeMini meet" onclick="homePipelineBreakdown('To Meet Up')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">📅</div><div class="pipeInfo"><div class="n">${meet}</div><div class="s">To Meet Up</div></div></div><div class="card pipeMini submit" onclick="homePipelineBreakdown('To Submit')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">📄</div><div class="pipeInfo"><div class="n">${submit}</div><div class="s">To Submit</div></div></div><div class="card pipeMini approve" onclick="homePipelineBreakdown('To Approve')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">💎</div><div class="pipeInfo"><div class="n">${approve}</div><div class="s">To Approve</div></div></div></div>
     </div>
     <div class="homeSectionHead"><h3>Existing Portfolio</h3></div>
     <div class="card portfolioHero breakdownTap" onclick="show('portfolio',null)"><div class="label">Active Policies</div><div class="portfolioValue">${active.length}</div><div class="portfolioSub">Under ${clientCount} client${clientCount===1?'':'s'} · active Inforce policies only</div><div class="portfolioMeta two"><div><b>${active.length}</b><span>Active Policies</span></div><div><b>${clientCount}</b><span>Clients</span></div></div></div>
