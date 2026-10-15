@@ -1466,6 +1466,23 @@ body:not(.cloudLocked) main{
   .top{scroll-margin-top:env(safe-area-inset-top)}
 }
 </style>
+
+<style id="salesSoundSettingsStyles">
+.soundSettingsCard .field label{display:block;margin-bottom:7px;font-weight:650}
+.soundSettingsCard select{width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--card);color:var(--text);font:inherit}
+.soundSwitch{position:relative;display:inline-flex;flex-shrink:0;width:52px;height:32px;cursor:pointer}
+.soundSwitch input{position:absolute;opacity:0;width:1px;height:1px}
+.soundSwitchTrack{position:absolute;inset:0;border-radius:999px;background:#a8a8ad;transition:background .18s ease}
+.soundSwitchTrack:after{content:"";position:absolute;width:26px;height:26px;left:3px;top:3px;border-radius:50%;background:#fff;box-shadow:0 1px 4px #0002;transition:transform .18s ease}
+.soundSwitch input:checked+.soundSwitchTrack{background:#34c759}
+.soundSwitch input:checked+.soundSwitchTrack:after{transform:translateX(20px)}
+.soundSwitch input:focus-visible+.soundSwitchTrack{outline:3px solid #0a84ff66;outline-offset:3px}
+</style>
+<style id="salesTapFeedbackV13Styles">
+.sales-tap-feedback{transform:scale(.975)!important;filter:brightness(.97);transition:transform 90ms ease,filter 90ms ease}
+button,a,[role="button"],[onclick],.tab,.navBtn,.menuBtn,.quickAction,.breakdownTap{ -webkit-tap-highlight-color:transparent }
+@media (prefers-reduced-motion:reduce){.sales-tap-feedback{transition:none}}
+</style>
 </head>
 <body>
 <div class="app">
@@ -1486,7 +1503,7 @@ const defaults={
  products:["Basic Term Assurance","PRU88","PRUCash Assurance With Profits","PRUCash Double Reward","PRUCash Enrich","Prudential Protection Plus Policy 70%","PRUElite Invest","PRUGrowth","PRUlady","PRULady Term Assurance","PRULife Ready","PRULink","PRULink Assurance Account","PRULink Assurance Plan","PRULink Investor Account","PRULink Million","PRULink One","PRUMy Child","PRUSave Assurance With Profits","PRUVantage","PRUWealth","PRUWealth Enrich","PRUWealth Enrich 2.0","PRUWealth Max","PRUWealth Plus","PRUWith You","PRUWith You Plus"],
  groups:["A","B","C","D"],
  benefits:["Death / TPD","TMCC","43 CI","Acci Death / TPD","Acci Medical Reimbursement (per case)","Medical Card","Payor"],
- rates:[.25,.25,.135,.185,.15,.15],theme:"ivory"
+ rates:[.25,.25,.135,.185,.15,.15],theme:"ivory",tapSoundEnabled:true,tapTone:"soft"
 };
 let db=JSON.parse(localStorage.getItem(KEY)||'null')||{cases:[],clients:[],contests:[],settings:structuredClone(defaults)};
 db.cases=db.cases||[];db.clients=db.clients||[];db.contests=db.contests||[];db.salesMotions=db.salesMotions||[];db.coverageAnalyses=db.coverageAnalyses||[];db.behaviourTracker=db.behaviourTracker||{targets:{},logs:[]};db.behaviourTracker.targets=db.behaviourTracker.targets||{};db.behaviourTracker.logs=db.behaviourTracker.logs||[];
@@ -1636,28 +1653,54 @@ const TXT={zh:{home:'首页',pipeline:'Pipeline',sales:'Sales',clients:'客户',
 function L(k){return (TXT[appLang]||TXT.en)[k]||k}
 function toggleLang(){appLang=appLang==='zh'?'en':'zh';localStorage.setItem('salesTrackerLang',appLang);render()}
 function setThemeMode(mode){db.settings.theme=mode;localStorage.setItem('salesTrackerTheme',mode);applyTheme();if(window.cloudScheduleSync)window.cloudScheduleSync();render()}
-// Lightweight tap feedback: short UI tone + haptic where the browser/device supports it.
-(function installTapFeedbackV12(){
- if(window.__salesTapFeedbackV12)return;window.__salesTapFeedbackV12=true;
- let audioCtx=null,lastTap=0;
- function feedback(){
-  const now=Date.now();if(now-lastTap<45)return;lastTap=now;
-  try{if(navigator.vibrate)navigator.vibrate(10)}catch(e){}
+// Global tap feedback: cover native controls and custom clickable surfaces.
+// iOS Safari does not currently expose a standard hardware-haptics API to web pages;
+// navigator.vibrate is still attempted where available, with a visible press response as fallback.
+(function installTapFeedbackV13(){
+ if(window.__salesTapFeedbackV13)return;window.__salesTapFeedbackV13=true;
+ let audioCtx=null,lastFeedbackAt=0,lastPointerAt=0;
+ const actionable='button,a,input,select,textarea,summary,[role="button"],[role="link"],[onclick],[tabindex]:not([tabindex="-1"]),label,.tab,.navBtn,.menuBtn,.quickAction,.breakdownTap,.clickable';
+ function playTone(force=false){
   try{
-   const Ctx=window.AudioContext||window.webkitAudioContext;
-   if(!Ctx)return;
+   if(!force && window.db && window.db.settings && window.db.settings.tapSoundEnabled===false)return;
+   const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return;
    audioCtx=audioCtx||new Ctx();
-   if(audioCtx.state==='suspended')audioCtx.resume().catch(()=>{});
-   const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
-   osc.type='sine';osc.frequency.setValueAtTime(880,audioCtx.currentTime);
-   osc.frequency.exponentialRampToValueAtTime(660,audioCtx.currentTime+0.035);
-   gain.gain.setValueAtTime(0.0001,audioCtx.currentTime);gain.gain.exponentialRampToValueAtTime(0.035,audioCtx.currentTime+0.006);gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+0.045);
-   osc.connect(gain);gain.connect(audioCtx.destination);osc.start();osc.stop(audioCtx.currentTime+0.05);
-  }catch(e){}
+   const tone=(window.db&&window.db.settings&&window.db.settings.tapTone)||'soft';
+   const schedule=()=>{try{
+    const now=audioCtx.currentTime;
+    const add=(type,f0,f1,start,duration,peak)=>{
+     const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();osc.type=type;
+     osc.frequency.setValueAtTime(f0,now+start);if(f1&&f1!==f0)osc.frequency.exponentialRampToValueAtTime(f1,now+start+duration*.72);
+     gain.gain.setValueAtTime(.0001,now+start);gain.gain.exponentialRampToValueAtTime(peak,now+start+.006);gain.gain.exponentialRampToValueAtTime(.0001,now+start+duration);
+     osc.connect(gain);gain.connect(audioCtx.destination);osc.start(now+start);osc.stop(now+start+duration+.005);
+    };
+    if(tone==='pop'){
+     add('triangle',660,330,0,.065,.055);
+    }else if(tone==='chime'){
+     add('sine',1046,1046,0,.09,.04);add('sine',1318,1318,.035,.11,.026);
+    }else if(tone==='digital'){
+     add('square',880,880,0,.028,.018);add('square',1175,1175,.038,.035,.018);
+    }else{
+     add('sine',920,680,0,.052,.04);
+    }
+   }catch(_){}};
+   if(audioCtx.state==='suspended'){const resumed=audioCtx.resume();if(resumed&&resumed.then)resumed.then(schedule).catch(()=>{});else schedule();}else schedule();
+  }catch(_){}
  }
- document.addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('button,[role="button"],.tab,.navBtn'))feedback()},true);
- document.addEventListener('change',e=>{if(e.target&&e.target.matches&&e.target.matches('input,select,textarea'))feedback()},true);
-})();
+ function feedback(el){
+  const now=Date.now();if(now-lastFeedbackAt<85)return;lastFeedbackAt=now;
+  try{if(typeof navigator.vibrate==='function')navigator.vibrate(12)}catch(_){}
+  if(el&&el.classList){el.classList.add('sales-tap-feedback');setTimeout(()=>{try{el.classList.remove('sales-tap-feedback')}catch(_){}},130)}
+  playTone();
+ }
+ window.__salesPlayTapTone=()=>playTone(true);
+ function targetFor(e){return e.target&&e.target.closest?e.target.closest(actionable):null}
+ document.addEventListener('pointerdown',e=>{const el=targetFor(e);if(!el)return;lastPointerAt=Date.now();feedback(el)},true);
+ document.addEventListener('touchstart',e=>{if(Date.now()-lastPointerAt<350)return;const el=targetFor(e);if(el){lastPointerAt=Date.now();feedback(el)}},{capture:true,passive:true});
+ document.addEventListener('click',e=>{if(Date.now()-lastPointerAt<500)return;const el=targetFor(e);if(el)feedback(el)},true);
+ document.addEventListener('change',e=>{if(Date.now()-lastPointerAt<350)return;const el=targetFor(e)||e.target;if(el&&el.matches&&el.matches('input,select,textarea'))feedback(el)},true);
+ document.addEventListener('keydown',e=>{if(e.key!=='Enter'&&e.key!==' ')return;const el=targetFor(e);if(el&&!(el.matches('input,textarea')&&e.key===' '))feedback(el)},true);
+})();;
 function render(){applyTheme();document.getElementById('brandSub').textContent='Insurance CRM · V2.0 Cloud';document.getElementById('newCaseBtn').textContent=L('newCase');const labels=['home','pipeline','sales','clients','coverage','contest','income','settings'];document.querySelectorAll('#nav button').forEach((b,i)=>b.textContent=L(labels[i]));[['home',home],['pipeline',pipeline],['sales',sales],['clients',clients],['coverage',coverage],['contest',contest],['income',income],['settings',settings]].forEach(([id,fn])=>{try{fn()}catch(err){console.error('Sales Tracker render error in '+id,err);const el=document.getElementById(id);if(el)el.innerHTML='<div class="card"><b>'+id+' failed to load</b><div class="small" style="margin-top:8px">Please refresh the app. Other sections remain available.</div></div>'}})}
 
 function startCase(){modal('New Case',`<div class="menuGrid"><button class="menuBtn" onclick="chooseNB()">New Business<span>New policy / new sale</span></button><button class="menuBtn" onclick="chooseTU()">Top Up<span>Upgrade an existing policy</span></button></div>`)}
@@ -2495,9 +2538,19 @@ function settings(){
  <div class="card" style="margin-top:10px"><div class="row"><h3 style="margin:0">Client Groups</h3><span class="small">Reorder anytime</span></div><div class="small" style="margin:8px 0 12px">Drag the ☰ handle to reorder. Tap × to remove.</div>${settingOrderList('groups',db.settings.groups)}<button class="secondary" style="margin-top:10px" onclick="addSetting('groups','Group')">＋ Add Group</button></div>
  <div class="card" style="margin-top:10px"><div class="row"><h3 style="margin:0">Benefits</h3><span class="small">Reorder anytime</span></div><div class="small" style="margin:8px 0 12px">Drag the ☰ handle to reorder. Tap × to remove.</div>${settingOrderList('benefits',db.settings.benefits)}<button class="secondary" onclick="addSetting('benefits','Benefit name')">＋ Add Benefit</button></div>
  <div class="card appearanceCard" style="margin-top:10px"><div class="row"><div><h3 style="margin:0">Appearance</h3><div class="small" style="margin-top:5px">Choose how Sales Tracker looks on this device.</div></div><span class="appearanceIcon">☼</span></div><div class="appearanceSegment"><button class="appearanceOption ${(!db.settings.theme||db.settings.theme==='light'||['ivory','sage','slate','sand'].includes(db.settings.theme))?'active':''}" onclick="setThemeMode('light')"><span>☀︎</span><b>Light</b></button><button class="appearanceOption ${db.settings.theme==='dark'?'active':''}" onclick="setThemeMode('dark')"><span>☾</span><b>Dark</b></button><button class="appearanceOption ${db.settings.theme==='system'?'active':''}" onclick="setThemeMode('system')"><span>◐</span><b>System</b></button></div></div>
+ <div class="card soundSettingsCard" style="margin-top:10px"><div class="row"><div><h3 style="margin:0">🔊 Sound & Touch</h3><div class="small" style="margin-top:5px">Choose the sound used when you tap controls.</div></div><span class="appearanceIcon">🎵</span></div><div class="row" style="margin-top:14px;align-items:center"><div><b>System sounds</b><div class="small">Turn tap sounds on or off.</div></div><label class="soundSwitch"><input type="checkbox" id="tapSoundEnabled" ${db.settings.tapSoundEnabled!==false?'checked':''} onchange="setTapSoundEnabled(this.checked)"><span class="soundSwitchTrack"></span></label></div><div class="field" style="margin-top:14px"><label for="tapToneSelect">Tap tone</label><select id="tapToneSelect" onchange="setTapTone(this.value)"><option value="soft" ${(db.settings.tapTone||'soft')==='soft'?'selected':''}>Soft · gentle tick</option><option value="pop" ${db.settings.tapTone==='pop'?'selected':''}>Pop · playful pop</option><option value="chime" ${db.settings.tapTone==='chime'?'selected':''}>Chime · bright double tone</option><option value="digital" ${db.settings.tapTone==='digital'?'selected':''}>Digital · tech beep</option></select></div><div class="actions" style="margin-top:12px"><button class="secondary" type="button" onclick="previewTapTone()">▶ Preview Tone</button></div><div class="small" style="margin-top:10px">Sound settings are saved with your app preferences. iPhone web pages may not support physical vibration; this setting controls the tap sound only.</div></div>
  <div class="card" style="margin-top:10px"><h3>Backup & Restore</h3><div class="small" style="margin-bottom:12px">Backup your Sales Tracker data before upgrading or moving to another device.</div><div class="small" style="margin-bottom:12px">Includes clients, cases, existing policies, contests, income-related data, coverage analysis, Vital Behaviour Tracker, settings and app preferences.</div><div class="actions"><button class="primary" onclick="backupData()">↓ Backup Data</button><button class="secondary" onclick="document.getElementById('restoreBackupInput').click()">↑ Restore Data</button></div><input id="restoreBackupInput" type="file" accept="application/json,.json" style="display:none" onchange="restoreBackup(event)"></div>
  <div class="card" style="margin-top:10px"><h3>Data</h3><button class="danger" onclick="resetData()">Reset All Data</button></div>`
 }
+function setTapSoundEnabled(enabled){
+ db.settings.tapSoundEnabled=!!enabled;save();
+ if(enabled)previewTapTone();
+}
+function setTapTone(tone){
+ const allowed=['soft','pop','chime','digital'];db.settings.tapTone=allowed.includes(tone)?tone:'soft';save();previewTapTone();
+}
+function previewTapTone(){try{window.__salesPlayTapTone?.()}catch(_){}}
+
 function addSetting(k,label){let v=prompt(label);if(v){db.settings[k].push(v.trim());save()}}
 function removeSetting(k,i){if(confirm(`Remove "${db.settings[k]?.[i]||'this option'}"?`)){db.settings[k].splice(i,1);save()}}
 
@@ -3792,4 +3845,60 @@ window.applyHomeTPCPeriod = applyHomeTPCPeriod;
 
 <style id="contestCountdownFeedbackV12">.contestCountdown{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:6px 10px;border-radius:999px;background:rgba(55,115,255,.09);color:var(--accent,#3978f6);font-size:12px;font-weight:750;letter-spacing:.01em}.contestActions button,.contestCreate,button{touch-action:manipulation}@media(prefers-reduced-motion:no-preference){button,.contestCard,.card{transition:transform .14s ease,box-shadow .18s ease}button:active{transform:scale(.975)}}
 </style>
+
+<style id="globalStickyHeaderFixV5">
+/* Keep the brand header pinned to the top of the viewport across every app section. */
+.app>.top{
+  position:fixed!important;
+  top:0!important;
+  left:50%!important;
+  right:auto!important;
+  transform:translateX(-50%)!important;
+  width:100%!important;
+  max-width:1216px!important;
+  margin:0!important;
+  z-index:1000!important;
+  padding-top:calc(env(safe-area-inset-top, 0px) + 14px)!important;
+  background:rgba(247,248,252,.88)!important;
+  -webkit-backdrop-filter:blur(28px) saturate(180%)!important;
+  backdrop-filter:blur(28px) saturate(180%)!important;
+  box-shadow:0 8px 24px rgba(40,55,85,.055)!important;
+  will-change:transform;
+}
+@media(max-width:760px){
+  .app>.top{padding-left:18px!important;padding-right:18px!important;}
+}
+body{scroll-padding-top:var(--global-header-height,100px)}
+#nav{scroll-margin-top:var(--global-header-height,100px)}
+</style>
+<script id="globalStickyHeaderRuntimeV5">
+(function(){
+  function installGlobalStickyHeader(){
+    var header=document.querySelector('.app>.top');
+    var app=document.querySelector('.app');
+    var nav=document.getElementById('nav');
+    if(!header||!app)return;
+    function syncHeaderSpace(){
+      var height=Math.ceil(header.getBoundingClientRect().height||header.offsetHeight||90);
+      document.documentElement.style.setProperty('--global-header-height',height+'px');
+      app.style.paddingTop=height+'px';
+      if(nav)nav.style.top=height+'px';
+    }
+    syncHeaderSpace();
+    if(window.ResizeObserver){
+      var ro=new ResizeObserver(syncHeaderSpace);
+      ro.observe(header);
+    }else{
+      window.addEventListener('resize',syncHeaderSpace,{passive:true});
+      window.addEventListener('orientationchange',function(){setTimeout(syncHeaderSpace,120)},{passive:true});
+    }
+    document.addEventListener('click',function(e){
+      var button=e.target&&e.target.closest&&e.target.closest('#langToggle,#newCaseBtn');
+      if(button)setTimeout(syncHeaderSpace,80);
+    },true);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installGlobalStickyHeader,{once:true});
+  else installGlobalStickyHeader();
+})();
+</script>
 </body></html>
