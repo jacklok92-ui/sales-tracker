@@ -2575,8 +2575,12 @@ function incomeBreakdown(type){
  let date=monthKey()+'-01', rows=[];
  if(type==='increment') rows=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(monthKey())).map(c=>({c,v:monthlyComm({...c,forceInforceCommissionStart:true},date)})).filter(x=>x.v!==0);
  else rows=db.cases.filter(c=>isHistoricalPolicyStatus(c.status)).map(c=>({c,v:monthlyPolicyCommissionAt(c,monthKey())})).filter(x=>x.v!==0);
- const adjustments=(db.salesMotions||[]).filter(m=>String(m.date||'').startsWith(monthKey())&&(Number(m.incomeDelta)||0)!==0).map(m=>({c:{...m,kind:'Sales Adjustment',product:m.product,type:m.product,inforce:m.date},v:Number(m.incomeDelta)||0}));
- rows=[...rows,...adjustments];
+ // This Month Increment is strictly new production commission only.
+ // ROP/Lapse/Cancellation and other income clawback/return motions belong in Estimated UTD Monthly Income.
+ if(type==='utd'){
+  const adjustments=(db.salesMotions||[]).filter(m=>String(m.date||'').startsWith(monthKey())&&(Number(m.incomeDelta)||0)!==0).map(m=>({c:{...m,kind:'Sales Adjustment',product:m.product,type:m.product,inforce:m.date},v:Number(m.incomeDelta)||0}));
+  rows=[...rows,...adjustments];
+ }
  let title=type==='increment'?'This Month Increment Breakdown':'Estimated UTD Monthly Income Breakdown';
  modal(title,`<div class="small" style="margin-bottom:12px">${rows.length} items · ${money(rows.reduce((s,x)=>s+x.v,0))}</div><div class="list">${rows.map(x=>`<div class="item"><div class="row"><div><b>${x.c.client||'-'}</b><div class="small">${x.c.product||x.c.type||'-'} · ${x.c.kind==='Sales Adjustment'?'Sales Adjustment · '+(x.c.type||x.c.motionType||'Motion'):x.c.kind}</div><div class="small">${x.c.kind==='Sales Adjustment'?'Motion date ':'Inforce '}${dateStr(x.c.inforce)}</div></div><b>${money(x.v)}</b></div></div>`).join('')||'<div class="empty">No commission for this period.</div>'}</div>`,true)
 }
