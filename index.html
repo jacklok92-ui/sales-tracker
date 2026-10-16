@@ -2987,6 +2987,18 @@ async function resetData(){
  function homePipelineBreakdown(status){const rows=db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)===status);modal(status+' Breakdown',`<div class="small" style="margin-bottom:12px">${rows.length} case${rows.length===1?'':'s'}</div><div class="list">${rows.map(c=>`<div class="item breakdownTap" onclick="editCase('${c.id}')"><div class="row"><div><b>${c.client||'-'}</b><div class="small">${c.product||c.type||'-'} · ${money(tpc(c))} TPC</div><div class="small">${c.inforce?dateStr(c.inforce):'No date'}</div></div><span class="pill">${normalizeStatus(c.status)}</span></div></div>`).join('')||'<div class="empty">No cases in this stage.</div>'}</div>`,true)}
  function initials(n){return String(n||'?').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase()||'?'}
  function iosCoach(){try{let x=coachInsight();return String(x||'').replace(/^\s*Today'?s Coach[:：]?\s*/i,'').replace(/^\s*今日 Coach[:：]?\s*/,'')}catch(e){return 'Keep moving the clients closest to the next step.'}}
+function homeContestCoachData(){
+ const today=iso(new Date());
+ const active=(Array.isArray(db.contests)?db.contests:[]).filter(x=>contestDate(x.start)<=today&&contestDate(x.end)>=today).map(x=>({x,info:contestStatusInfo(x),start:contestDate(x.start),end:contestDate(x.end)}));
+ active.sort((a,b)=>a.info.daysLeft-b.info.daysLeft||Math.max(0,Number(b.x.target)||0)-Math.max(0,Number(a.x.target)||0)||String(a.x.name||'').localeCompare(String(b.x.name||'')));
+ const urgent=active[0]||null;
+ const biggest=active.slice().sort((a,b)=>Math.max(0,Number(b.x.target)||0)-Math.max(0,Number(a.x.target)||0)||a.info.daysLeft-b.info.daysLeft)[0]||null;
+ const monthStart=new Date(new Date().getFullYear(),new Date().getMonth(),1), monthEnd=new Date(new Date().getFullYear(),new Date().getMonth()+1,0);
+ const currentMonthTPC=salesTPCInRange(iso(monthStart),iso(monthEnd));
+ let requiredMonthTPC=0,remaining=0;
+ if(biggest){remaining=Math.max(0,biggest.info.target-biggest.info.amount);const todayDate=new Date(today+'T00:00:00'),endDate=new Date(biggest.end+'T00:00:00');const daysLeft=Math.max(1,Math.floor((endDate-todayDate)/86400000)+1);const daysThisMonth=Math.max(0,Math.floor((Math.min(endDate,monthEnd)-todayDate)/86400000)+1);requiredMonthTPC=remaining/daysLeft*daysThisMonth;}
+ return {active,urgent,biggest,currentMonthTPC,requiredMonthTPC,remaining};
+}
 function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
   const parts=[];
   if(approve>0) parts.push(`<div class="coachPriority"><div class="coachPriorityLabel green">PRIORITY 1</div><div class="coachPriorityText"><b>${approve} case${approve===1?'':'s'} ${approve===1?'is':'are'} waiting for approval.</b> Clear ${approve===1?'this':'these'} first so ${approve===1?'it can':'they can'} move forward.</div></div>`);
@@ -2994,6 +3006,9 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
   else if(follow>0||meet>0||approach>0){let label=follow>0?'follow-up':meet>0?'meet-up':'approach';let n=follow||meet||approach;parts.push(`<div class="coachPriority"><div class="coachPriorityLabel blue">PRIORITY 1</div><div class="coachPriorityText"><b>${n} ${label} case${n===1?'':'s'} ${n===1?'needs':'need'} your attention.</b> Keep the next step moving.</div></div>`)}
   if(approve>0&&submit>0) parts.push(`<div class="coachPriority"><div class="coachPriorityLabel purple">PRIORITY 2</div><div class="coachPriorityText"><b>${submit} submission case${submit===1?'':'s'} ${submit===1?'is':'are'} waiting for your attention.</b> Review and submit ${submit===1?'it':'them'} to keep your pipeline moving.</div></div>`);
   parts.push(`<div class="coachPriority coachProduction"><div class="coachPriorityLabel blue">${monthLabel(selectedHomeDate()).toUpperCase()} PRODUCTION</div><div class="coachPriorityText"><b>${cases} case${cases===1?'':'s'} · ${money(tpcNow)} TPC</b> ${tpcNow>0?'Keep the momentum going.':'You still have time to build momentum this month.'}</div></div>`);
+  const cd=homeContestCoachData();
+  if(cd.urgent){const c=cd.urgent.x,i=cd.urgent.info,tiers=c.trackingMode==='cumulative'&&Array.isArray(c.rewardTiers)?c.rewardTiers.slice().sort((a,b)=>Number(a.target)-Number(b.target)):[],next=tiers.find(t=>i.amount<Number(t.target));parts.push(`<div class="coachPriority"><div class="coachPriorityLabel blue">CONTEST NUDGE</div><div class="coachPriorityText"><b>${String(c.name||'Contest').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]))} · ${i.daysLeft===0?'last day':i.daysLeft+' days left'}</b><br>${next?`Next reward: ${String(next.reward||'Milestone').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]))}. Only ${money(Math.max(0,Number(next.target)-i.amount))} TPC to go.`:`Current progress: ${money(i.amount)} / ${money(i.target)} TPC.`}</div></div>`)}
+  if(cd.biggest){const c=cd.biggest.x,needed=cd.requiredMonthTPC,short=Math.max(0,needed-cd.currentMonthTPC),paceMsg=short>0?`You are ${money(short)} TPC below this month's pace.`:'You are on track for this month\'s pace.';parts.push(`<div class="coachPriority"><div class="coachPriorityLabel purple">MONTHLY ON-TRACK PACE</div><div class="coachPriorityText"><b>${String(c.name||'Largest target').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]))}: aim for ${money(needed)} TPC this month.</b><br>Based on remaining ${money(cd.remaining)} TPC and ${cd.biggest.info.daysLeft} days left. ${paceMsg}</div></div>`)}
   return parts.join('');
 }
  function activePolicies(){return db.cases.filter(c=>policyPortfolioActive(c))}
@@ -3064,6 +3079,14 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
  window.openHomeTPCPeriodPicker=openHomeTPCPeriodPicker;
  window.changeHomeTPCPeriodFields=changeHomeTPCPeriodFields;
  window.applyHomeTPCPeriod=applyHomeTPCPeriod;
+ function homeContestSpotlightIOS(){
+  const today=iso(new Date());
+  const rows=(Array.isArray(db.contests)?db.contests:[]).filter(x=>contestDate(x.start)<=today&&contestDate(x.end)>=today).map(x=>({x,info:contestStatusInfo(x)}));
+  rows.sort((a,b)=>a.info.daysLeft-b.info.daysLeft||b.info.target-a.info.target||String(a.x.name||'').localeCompare(String(b.x.name||''),undefined,{sensitivity:'base'}));
+  const esc=v=>String(v??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]));
+  if(!rows.length)return '<div class="homeContestEmpty">🏆 No ongoing contests right now.</div>';
+  return `<div class="homeContestList">${rows.slice(0,3).map(({x,info})=>{const tiers=x.trackingMode==='cumulative'&&Array.isArray(x.rewardTiers)?x.rewardTiers.slice().sort((a,b)=>Number(a.target)-Number(b.target)):[],earned=tiers.filter(t=>info.amount>=Number(t.target)).length,next=tiers.find(t=>info.amount<Number(t.target)),pct=info.target>0?Math.min(100,info.amount/info.target*100):0;return `<article class="homeContestCard" onclick="show('contest',document.querySelector('#nav button[data-page=contest]'))"><div class="homeContestTop"><span class="homeContestTrophy">🏆</span><div class="homeContestTitle"><b>${esc(x.name||'Contest')}</b><small>${contestDate(x.end)} · ${info.daysLeft===0?'Last day':info.daysLeft+' days left'}</small></div><span class="homeContestLive">● LIVE</span></div><div class="homeContestNumbers"><strong>${x.metric==='TPC'?money(info.amount):info.amount+' cases'}</strong><span>/ ${x.metric==='TPC'?money(info.target):info.target+' cases'}</span></div><div class="homeContestTrack"><i style="width:${pct.toFixed(1)}%"></i></div><div class="homeContestBottom"><span>${pct.toFixed(1)}% achieved</span>${tiers.length?`<span>🎁 ${earned}/${tiers.length} rewards</span>`:`<span>${contestPolicyCount(x)} policies</span>`}</div>${next?`<div class="homeContestNext">Next: <b>${esc(next.reward||'Reward')}</b> · ${money(Math.max(0,Number(next.target)-info.amount))} TPC to go</div>`:''}</article>`}).join('')}</div>`;
+ }
  function iosHome(){
    const now=selectedHomeDate(), key=window.homeMonthKey, view=window.homeTPCView||'month';
    const period=homeTPCPeriodInfo(view,now);
@@ -3099,6 +3122,8 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
     </div>
     <div class="homeSectionHead"><h3>Existing Portfolio</h3></div>
     <div class="card portfolioHero breakdownTap" onclick="show('portfolio',null)"><div class="label">Active Policies</div><div class="portfolioValue">${active.length}</div><div class="portfolioSub">Under ${clientCount} client${clientCount===1?'':'s'} · active Inforce policies only</div><div class="portfolioMeta two"><div><b>${active.length}</b><span>Active Policies</span></div><div><b>${clientCount}</b><span>Clients</span></div></div></div>
+    <div class="homeSectionHead homeContestHomeHead"><h3>🏆 Ongoing Contests</h3><button class="homeContestViewAll" onclick="show('contest',document.querySelector('#nav button[data-page=contest]'))">View all ↗</button></div>
+    ${homeContestSpotlightIOS()}
     <div class="homeSectionHead"><h3>Today's Coach</h3></div>
     <div class="card coachCard coachTextCard" onclick="openMoreMenu()"><div class="coachHeader"><div><div class="coachTitleBig">Today's Coach ✨</div><div class="coachSubtitle">Here's what to focus on today.</div></div><div class="coachArrow">›</div></div><div class="coachMessage">${iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases)}</div></div>`;
  }
@@ -4171,3 +4196,4 @@ body{scroll-padding-top:var(--global-header-height,100px)}
 .contestTierNext{font-size:11px;margin-top:9px;padding-top:9px;border-top:1px solid var(--line,rgba(120,130,150,.16));color:var(--muted,#7d8492)}
 </style>
 </body></html>
+<style>.homeContestHomeHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:22px}.homeContestHomeHead h3{margin:0}</style>
