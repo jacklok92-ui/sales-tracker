@@ -1593,7 +1593,7 @@ function factor(c){return c.term==='10'?.5:c.term==='5'?.25:1}
 function duration(c){return c.term==='5'?5:6}
 function eligible(c){return ['Inforce','ROP','ROP Revoke','Revival'].includes(normalizeStatus(c.status))}
 function policyPortfolioActive(c){return ['Inforce','ROP','ROP Revoke','Revival'].includes(normalizeStatus(c.status))}
-function isHistoricalPolicyStatus(status){return ['Inforce','ROP','ROP Revoke','Lapse','Revival','Surrender','Ceased'].includes(normalizeStatus(status))}
+function isHistoricalPolicyStatus(status){return ['Inforce','ROP','ROP Revoke','Lapse','Revival','Cancellation','Surrender','Ceased'].includes(normalizeStatus(status))}
 function salesMotionId(){return 'motion_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)}
 function salesMotionRows(from,to,product='Any'){
  const start=String(from||''),end=String(to||'');
@@ -1621,8 +1621,8 @@ function monthlyPolicyCommissionAt(policy,key){
  const allEvents=(db.salesMotions||[]).filter(m=>String(m.caseId)===policyId&&m.date).sort((a,b)=>a.date.localeCompare(b.date));
  const events=allEvents.filter(m=>m.date.slice(0,7)<=target);
  let blocked=false;
- events.forEach(m=>{if(['ROP','Lapse','Lapse (negative TPC)'].includes(m.type))blocked=true;else if(['ROP Revoke','Revival'].includes(m.type))blocked=false});
- if(!allEvents.length&&['ROP','Lapse','Surrender','Ceased'].includes(baseStatus))return 0;
+ events.forEach(m=>{if(['ROP','Lapse','Lapse (negative TPC)','Cancellation'].includes(m.type))blocked=true;else if(['ROP Revoke','Revival'].includes(m.type))blocked=false});
+ if(!allEvents.length&&['ROP','Lapse','Cancellation','Surrender','Ceased'].includes(baseStatus))return 0;
  if(blocked)return 0;
  return monthlyComm({...policy,status:'Inforce'},target+'-01');
 }
@@ -1644,6 +1644,10 @@ function recordPolicyMotion(policy,oldStatus,newStatus,formData){
    const m=addSalesMotion(policy,'ROP Revoke',date,{tpcDelta:Math.abs(tpc(policy)),caseDelta:1,incomeDelta:Math.abs(Number(priorROP.incomeDelta)||0)});
    priorROP.reversedBy=m.id;
    return m;
+ }
+ if(next==='Cancellation'&&old!=='Cancellation'&&!unresolvedPolicyMotion(caseId,'Cancellation')){
+   const clawback=cumulativeCommissionBefore({...policy,status:'Inforce'},date);
+   return addSalesMotion(policy,'Cancellation',date,{tpcDelta:-Math.abs(tpc(policy)),caseDelta:-1,incomeDelta:-Math.abs(clawback)});
  }
  if(old===next)return null;
  if(next==='ROP'&&!priorROP){
@@ -1785,10 +1789,10 @@ function caseForm(mode,ic='',reduceId='',clientName=''){
  `<div class="field full"><label>Client Name</label><input value="${c.client||''}" disabled><input type="hidden" name="client" value="${c.client||''}"><input type="hidden" name="ic" value="${c.ic||''}"></div>`);
  let top=`${mode==='topup'?`<div class="field full"><label>Existing Product to Top Up</label><select name="parentPolicy">${existingProducts.map(p=>`<option>${p}</option>`).join('')}</select></div>`:''}`;
  let title=isReduce?'Reduce Policy':mode==='topup'?'Top Up':mode==='existing'?'New Business · Existing Client':'New Business · New Client';
- let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','ROP','ROP Revoke','Lapse','Revival','Surrender','Ceased'];
+ let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','ROP','ROP Revoke','Lapse','Revival','Cancellation','Surrender','Ceased'];
  let benefits=JSON.parse(c.benefit||'{}');
  let currentStatus=normalizeStatus(c.policyMotionStatus||c.status||'To Approach');
- let inforceVisible=['Inforce','ROP','ROP Revoke','Revival'].includes(currentStatus);
+ let inforceVisible=['Inforce','ROP','ROP Revoke','Revival','Cancellation'].includes(currentStatus);
  let benefitBlock=benefitFields(benefits);
  modal(title,`<form class="newClientForm" onsubmit="saveCaseForm(event,'${mode}','${reduceId}')"><div class="formgrid">
  <div class="newClientSection full"><div class="newClientSectionTitle"><span class="sectionIcon">♙</span>Client Information</div>${clientBlock}</div>
@@ -1797,7 +1801,7 @@ function caseForm(mode,ic='',reduceId='',clientName=''){
  <div class="newClientSection full"><div class="newClientSectionTitle"><span class="sectionIcon">♢</span>Benefits <span class="sectionHint">Optional · Coverage details below</span></div><div class="benefitList">${benefitBlock}</div></div>
  <div class="field" id="inforceDateField" style="${inforceVisible?'':'display:none'}"><label>Inforce Date</label><input type="date" name="inforce" id="caseInforce" value="${c.inforce||''}" ${inforceVisible?'required':''}></div>
  <div class="field" id="commencementDateField" style="${inforceVisible?'':'display:none'}"><label>Commencement Date</label><input type="date" name="commissionStart" id="caseCommencement" value="${calculatedCommencement(c.inforce)||''}" readonly aria-readonly="true" ${inforceVisible?'required':''}><div class="small">Automatically calculated from Inforce Date. Only Inforce Date can be changed.</div></div>
- <div class="field full" id="salesMotionDateField" style="${['ROP','ROP Revoke','Lapse','Revival'].includes(currentStatus)?'':'display:none'}"><label id="salesMotionDateLabel">Motion Date</label><input type="date" name="motionDate" id="salesMotionDate" value="${c.motionDate||iso(new Date())}"><div class="small">This date determines the month of the sales adjustment.</div></div>
+ <div class="field full" id="salesMotionDateField" style="${['ROP','ROP Revoke','Lapse','Revival','Cancellation'].includes(currentStatus)?'':'display:none'}"><label id="salesMotionDateLabel">Motion Date</label><input type="date" name="motionDate" id="salesMotionDate" value="${c.motionDate||iso(new Date())}"><div class="small">This date determines the month of the sales adjustment.</div></div>
  <div class="field full" id="lapseNegativeTPCField" style="${currentStatus==='Lapse'?'':'display:none'}"><label style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="lapseNegativeTPC" value="yes" style="width:auto;margin-top:3px"> This lapse should deduct TPC and 1 case in the lapse month</label><div class="small">Leave unchecked for policies that lapsed after the first policy year or where no negative TPC applies.</div></div>
  <div class="field"><label>Premium (per payment)</label><input id="premium" type="number" step=".01" name="premium" value="${c.premium??''}"></div>
  <div class="field"><label>Payment Mode</label><select id="payMode" name="payMode">${[['monthly','Monthly'],['quarterly','Quarterly'],['halfyearly','Half-Yearly'],['yearly','Yearly'],['single','Single Premium']].map(a=>`<option value="${a[0]}" ${c.payMode===a[0]?'selected':''}>${a[1]}</option>`).join('')}</select></div>
@@ -1807,7 +1811,7 @@ function caseForm(mode,ic='',reduceId='',clientName=''){
  let f=document.querySelector('.modal form'),p=f.querySelector('#premium'),pm=f.querySelector('#payMode'),t=f.querySelector('#tpc'),st=f.querySelector('#caseStatus'),df=f.querySelector('#inforceDateField'),inf=f.querySelector('#caseInforce');
  function calc(){let x=+p.value||0;t.value=(pm.value==='monthly'?x*12:pm.value==='quarterly'?x*4:pm.value==='halfyearly'?x*2:x).toFixed(2)}
  let lastMotionStatus=currentStatus;
- const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement'),motionDateField=document.getElementById('salesMotionDateField'),motionDateLabel=document.getElementById('salesMotionDateLabel'),motionDateInput=document.getElementById('salesMotionDate'),lapseNegativeField=document.getElementById('lapseNegativeTPCField');function updateCommencement(){const next=calculatedCommencement(inf.value);comm.value=next;comm.setAttribute('value',next);comm.dataset.auto='1'}function syncInforce(){const status=normalizeStatus(st.value);if(status!==lastMotionStatus){if(motionDateInput)motionDateInput.value=iso(new Date());lastMotionStatus=status}const yes=['Inforce','ROP','ROP Revoke','Revival'].includes(status);df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());updateCommencement();if(motionDateField){const motion=['ROP','ROP Revoke','Lapse','Revival'].includes(status);motionDateField.style.display=motion?'':'none';if(motionDateInput&&!motionDateInput.value)motionDateInput.value=iso(new Date());if(motionDateLabel)motionDateLabel.textContent=status==='ROP'?'ROP Trigger Date':status==='ROP Revoke'?'ROP Revoke Date':status==='Lapse'?'Lapse Date':'Revival Date'}if(lapseNegativeField)lapseNegativeField.style.display=status==='Lapse'?'':'none'}inf.addEventListener('input',updateCommencement);inf.addEventListener('change',updateCommencement);inf.addEventListener('blur',updateCommencement);
+ const cf=document.getElementById('commencementDateField'),comm=document.getElementById('caseCommencement'),motionDateField=document.getElementById('salesMotionDateField'),motionDateLabel=document.getElementById('salesMotionDateLabel'),motionDateInput=document.getElementById('salesMotionDate'),lapseNegativeField=document.getElementById('lapseNegativeTPCField');function updateCommencement(){const next=calculatedCommencement(inf.value);comm.value=next;comm.setAttribute('value',next);comm.dataset.auto='1'}function syncInforce(){const status=normalizeStatus(st.value);if(status!==lastMotionStatus){if(motionDateInput)motionDateInput.value=iso(new Date());lastMotionStatus=status}const yes=['Inforce','ROP','ROP Revoke','Revival','Cancellation'].includes(status);df.style.display=yes?'':'none';cf.style.display=yes?'':'none';inf.required=yes;comm.required=yes;if(yes&&!inf.value)inf.value=iso(new Date());updateCommencement();if(motionDateField){const motion=['ROP','ROP Revoke','Lapse','Revival','Cancellation'].includes(status);motionDateField.style.display=motion?'':'none';if(motionDateInput&&!motionDateInput.value)motionDateInput.value=iso(new Date());if(motionDateLabel)motionDateLabel.textContent=status==='ROP'?'ROP Trigger Date':status==='ROP Revoke'?'ROP Revoke Date':status==='Lapse'?'Lapse Date':status==='Cancellation'?'Cancellation Date':'Revival Date'}if(lapseNegativeField)lapseNegativeField.style.display=status==='Lapse'?'':'none'}inf.addEventListener('input',updateCommencement);inf.addEventListener('change',updateCommencement);inf.addEventListener('blur',updateCommencement);
  p.oninput=calc;pm.onchange=calc;st.onchange=syncInforce;calc();syncInforce()
 }
 
@@ -1851,7 +1855,7 @@ function saveCaseForm(e,mode,reduceId){
    const idx=db.cases.findIndex(c=>String(c.id)===String(editingId));
    if(idx>=0) db.cases[idx]=merged;
    const motion=recordPolicyMotion(merged,oldStatus,newStatus,o);
-   if(motion&&['ROP','ROP Revoke','Lapse (negative TPC)','Revival'].includes(motion.type))merged.motionDate=motion.date;
+   if(motion&&['ROP','ROP Revoke','Lapse (negative TPC)','Revival','Cancellation'].includes(motion.type))merged.motionDate=motion.date;
  }else{
    db.cases.push(o);
    if(newStatus!=='To Approach'){try{behaviourRecordTransition('To Approach',storedStatus,o,behaviourDate(new Date()));}catch(err){console.error('Vital Behaviour record failed',err);}}
