@@ -2321,7 +2321,7 @@ function clients(){
 }
 function openClientFilter(){
  let f=window.cf||{},groups=Array.isArray(f.groups)?f.groups:[],statuses=Array.isArray(f.statuses)?f.statuses:[],products=Array.isArray(f.products)?f.products:[];
- let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','Surrender','Lapse','Ceased'];
+ let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'];
  let productOptions=allProducts().sort((a,b)=>a.localeCompare(b));
  let checks=(name,items,selected)=>items.map((x,i)=>`<label class="checkRow"><input type="checkbox" data-filter="${name}" value="${String(x).replace(/"/g,'&quot;')}" ${selected.includes(x)?'checked':''}><span>${x}</span></label>`).join('');
  modal('Filter Clients',`<div class="filterModal">
@@ -3026,8 +3026,14 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
  }
  function pipelineStageClass(status){const s=normalizeStatus(status);return ({'To Approach':'approach','To Meet Up':'meet','To Follow Up':'follow','To Submit':'submit','To Approve':'approve'})[s]||'neutral'}
  function iosPipeline(){
-   const stages=['All','To Approach','To Follow Up','To Meet Up','To Submit','To Approve']; let activeStage=window.iosPipeStage||'All';
-   let rows=db.cases.filter(c=>c.kind!=='Existing Policy' && (activeStage==='All'||normalizeStatus(c.status)===activeStage));
+   // Pipeline only contains the five actionable prospect stages. Inforce and
+   // post-sale statuses remain available in Portfolio / policy records, not here.
+   const pipelineStatuses=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'];
+   const stages=['All',...pipelineStatuses];
+   let activeStage=window.iosPipeStage||'All';
+   if(activeStage!=='All'&&!pipelineStatuses.includes(activeStage)) activeStage='All';
+   window.iosPipeStage=activeStage;
+   let rows=db.cases.filter(c=>c.kind!=='Existing Policy' && pipelineStatuses.includes(normalizeStatus(c.status)) && (activeStage==='All'||normalizeStatus(c.status)===activeStage));
    rows=rows.slice().sort((a,b)=>String(b.inforce||b.createdAt||'').localeCompare(String(a.inforce||a.createdAt||'')));
    document.getElementById('pipeline').innerHTML=`<div class="pipelineHeader"><div class="pageTitle">Pipeline</div><div class="small" style="margin-top:5px">Keep every opportunity moving.</div></div><div class="segScroll">${stages.map(s=>`<button class="${s===activeStage?'active':''}" onclick="window.iosPipeStage='${s}';render()">${s}${s==='All'?' '+rows.length:' '+db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)===s).length}</button>`).join('')}</div><div class="pipeSearch"><span>⌕</span><input placeholder="Search client name, product..." oninput="window.iosPipeQ=this.value;render()"><button class="filterBtn" onclick="openClientFilter()">☷</button></div><div class="list">${rows.filter(c=>{let q=(window.iosPipeQ||'').toLowerCase();return !q||String(c.client||'').toLowerCase().includes(q)||String(c.product||c.type||'').toLowerCase().includes(q)}).map(c=>`<div class="card leadRow stage-${pipelineStageClass(c.status)}" onclick="editCase('${c.id}')"><div class="avatar">${initials(c.client)}</div><div class="leadMain"><div class="leadName">${c.client||'-'}</div><div class="leadProduct">${c.product||c.type||'-'} · ${money(tpc(c))} TPC</div></div><div class="leadRight"><div class="leadStatus">${normalizeStatus(c.status)}</div><div class="leadTime">${c.inforce?dateStr(c.inforce):'No date'}</div></div></div>`).join('')||'<div class="empty">No pipeline records.</div>'}</div>`;
  }
@@ -4013,5 +4019,15 @@ body{scroll-padding-top:var(--global-header-height,100px)}
 #nav>button{min-width:0!important;padding-left:2px!important;padding-right:2px!important}
 #nav>button em{font-size:11px!important;white-space:nowrap!important;letter-spacing:-.15px}
 @media(max-width:390px){.dockPageSelect{min-width:100px;font-size:12px;padding:9px 5px}.dockSettingRow .rowSub{font-size:11px}#nav>button em{font-size:10px!important}}
+
+/* V13: keep filter choices inside their cards on narrow iPhone screens. */
+.modalBox{box-sizing:border-box;width:calc(100% - 24px);max-width:760px;min-width:0;}
+.filterModal,.filterGroup,.checkGrid,.checkRow{box-sizing:border-box;min-width:0;max-width:100%;}
+.filterModal .checkGrid{grid-template-columns:minmax(0,1fr);width:100%;}
+.filterModal .checkRow{display:flex;justify-content:flex-start;align-items:center;gap:12px;width:100%;padding:12px 14px;white-space:normal;text-align:left;overflow:hidden;}
+.filterModal .checkRow input{flex:0 0 22px;width:22px;height:22px;max-width:22px;margin:0;}
+.filterModal .checkRow span{display:block;flex:1 1 auto;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:normal;text-align:left;line-height:1.35;}
+.filterModal .filterGroup>.small{min-width:0;overflow-wrap:anywhere;}
+@media(max-width:640px){.modalBox{width:calc(100% - 24px);margin:12px auto;padding:16px;}.filterModal{width:100%;}.filterModal .checkRow{font-size:15px;}}
 </style>
 </body></html>
