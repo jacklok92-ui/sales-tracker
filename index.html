@@ -1533,7 +1533,7 @@ const importedProducts=[...new Set(db.cases.map(c=>c.product||c.type).filter(Boo
 importedProducts.forEach(p=>{if(!db.settings.products.includes(p)) db.settings.products.push(p)});
 function normalizeStatus(v){
  let s=String(v||'').trim();
- let m={'INFORCE':'Inforce','LAPSED':'Lapse','LAPSE':'Lapse','CANCELLED':'Ceased','CANCELED':'Ceased','SURRENDER':'Surrender','CEASED':'Ceased','DEATH CLAIM APPROVED':'Ceased','ENDORSEMENT IN PROGRESS':'Inforce','TO APPROACH':'To Approach','TO MEET UP':'To Meet Up','TO FOLLOW UP':'To Follow Up','TO SUBMIT':'To Submit','TO APPROVE':'To Approve'};
+ let m={'INFORCE':'Inforce','LAPSED':'Lapse','LAPSE':'Lapse','CANCEL':'Cancellation','CANCELLED':'Cancellation','CANCELED':'Cancellation','CANCELLATION':'Cancellation','CANCELATION':'Cancellation','SURRENDER':'Surrender','CEASED':'Ceased','DEATH CLAIM APPROVED':'Ceased','ENDORSEMENT IN PROGRESS':'Inforce','TO APPROACH':'To Approach','TO MEET UP':'To Meet Up','TO FOLLOW UP':'To Follow Up','TO SUBMIT':'To Submit','TO APPROVE':'To Approve'};
  return m[s.toUpperCase()]||s;
 }
 // Normalize imported/existing records so RAISe values such as INFORCE/LAPSED/CANCELLED
@@ -1666,6 +1666,26 @@ function recordPolicyMotion(policy,oldStatus,newStatus,formData){
  }
  return null;
 }
+// Repair legacy Cancellation statuses that were saved before Cancellation was
+// normalized correctly. Create one dated negative TPC/case/income motion only
+// when no Cancellation motion exists for this policy, so reloads cannot duplicate it.
+(function repairMissingCancellationMotionsV17(){
+ const rows=Array.isArray(db.cases)?db.cases:[];
+ rows.forEach(policy=>{
+  const status=normalizeStatus(policy.status||policy.policyMotionStatus||'');
+  if(status!=='Cancellation')return;
+  const id=String(policy.id||'');
+  if(!id)return;
+  const alreadyRecorded=(db.salesMotions||[]).some(m=>String(m.caseId)===id&&normalizeStatus(m.type)==='Cancellation');
+  if(alreadyRecorded)return;
+  const date=contestDate(policy.motionDate||policy.statusDate||policy.updatedAt)||iso(new Date());
+  const clawback=cumulativeCommissionBefore({...policy,status:'Inforce'},date);
+  addSalesMotion(policy,'Cancellation',date,{
+   tpcDelta:-Math.abs(tpc(policy)),caseDelta:-1,incomeDelta:-Math.abs(clawback)
+  });
+ });
+ if(Array.isArray(db.salesMotions))localStorage.setItem(KEY,JSON.stringify(db));
+})();
 function calculatedCommencement(inforce){if(!inforce)return '';const d=new Date(inforce+'T00:00:00');const month=d.getMonth()+(d.getDate()>=3?1:0);return iso(new Date(d.getFullYear(),month,1))}
 function cycleStart(c){return calculatedCommencement(c.inforce)||c.inforce||c.commissionStart||c.commencement||''}
 function monthlyComm(c,date){
@@ -2549,7 +2569,7 @@ function income(){
  while(cursor<=now){let key=monthKey(cursor),v=active.reduce((sum,c)=>sum+monthlyPolicyCommissionAt(c,key),0)+incomeMotionsForMonth(key);months.push({key,v});cursor.setMonth(cursor.getMonth()+1)}
  let currentKey=monthKey(),utd=active.reduce((sum,c)=>sum+monthlyPolicyCommissionAt(c,currentKey),0)+incomeMotionsForMonth(currentKey);
  // Increment is production written this month, based on Inforce Date, not Commencement Date.
- let increment=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((sum,c)=>sum+monthlyComm({...c,forceInforceCommissionStart:true},currentKey+'-01'),0)+incomeMotionsForMonth(currentKey);
+ let increment=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((sum,c)=>sum+monthlyComm({...c,forceInforceCommissionStart:true},currentKey+'-01'),0);
  let clients=clientRecords().length,existingActive=active.filter(c=>c.kind==='Existing Policy').length;
  const max=Math.max(...months.map(x=>x.v),1),rangeCount=months.length;
  // Keep chart bars clean: values are shown in the summary only after a month is selected.
