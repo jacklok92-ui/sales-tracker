@@ -1630,24 +1630,35 @@ function addSalesMotion(policy,type,date,values={}){
  const m={id:salesMotionId(),caseId:String(policy.id||''),client:policy.client||'',ic:policy.ic||'',product:normalizeProduct(policy.product||policy.type||''),policyNumber:policy.policyNumber||'',type,date:date||iso(new Date()),tpcDelta:Number(values.tpcDelta)||0,caseDelta:Number(values.caseDelta)||0,incomeDelta:Number(values.incomeDelta)||0,negativeTPC:!!values.negativeTPC,countInSales:values.countInSales!==false,createdAt:new Date().toISOString(),reversedBy:''};
  db.salesMotions.push(m);return m;
 }
+function unresolvedPolicyMotion(caseId,type){
+ return [...(db.salesMotions||[])].reverse().find(m=>String(m.caseId)===String(caseId)&&m.type===type&&!m.reversedBy);
+}
 function recordPolicyMotion(policy,oldStatus,newStatus,formData){
  const old=normalizeStatus(oldStatus),next=normalizeStatus(newStatus),date=contestDate(formData.motionDate)||iso(new Date()),caseId=String(policy.id||'');
+ const priorROP=unresolvedPolicyMotion(caseId,'ROP');
+ const priorLapse=unresolvedPolicyMotion(caseId,'Lapse (negative TPC)');
+ // Resolve an outstanding ROP even if an earlier edit/cloud sync lost the overlay field
+ // and the underlying policy now appears simply as Inforce.
+ const isROPRevoke=(next==='ROP Revoke'||(next==='Inforce'&&!!priorROP));
+ if(isROPRevoke&&priorROP){
+   const m=addSalesMotion(policy,'ROP Revoke',date,{tpcDelta:Math.abs(tpc(policy)),caseDelta:1,incomeDelta:Math.abs(Number(priorROP.incomeDelta)||0)});
+   priorROP.reversedBy=m.id;
+   return m;
+ }
  if(old===next)return null;
- if(next==='ROP'&&old!=='ROP'){
+ if(next==='ROP'&&!priorROP){
    const clawback=cumulativeCommissionBefore({...policy,status:'Inforce'},date);
    return addSalesMotion(policy,'ROP',date,{tpcDelta:-Math.abs(tpc(policy)),caseDelta:-1,incomeDelta:-Math.abs(clawback)});
  }
- if(next==='ROP Revoke'&&old==='ROP'){
-   const prior=[...(db.salesMotions||[])].reverse().find(m=>String(m.caseId)===caseId&&m.type==='ROP'&&!m.reversedBy);
-   const m=addSalesMotion(policy,'ROP Revoke',date,{tpcDelta:Math.abs(tpc(policy)),caseDelta:1,incomeDelta:Math.abs(Number(prior?.incomeDelta)||0)});if(prior)prior.reversedBy=m.id;return m;
- }
  if(next==='Lapse'){
-   if(formData.lapseNegativeTPC==='yes')return addSalesMotion(policy,'Lapse (negative TPC)',date,{tpcDelta:-Math.abs(tpc(policy)),caseDelta:-1,negativeTPC:true});
+   if(formData.lapseNegativeTPC==='yes'&&!priorLapse)return addSalesMotion(policy,'Lapse (negative TPC)',date,{tpcDelta:-Math.abs(tpc(policy)),caseDelta:-1,negativeTPC:true});
    return addSalesMotion(policy,'Lapse',date,{countInSales:false});
  }
  if(next==='Revival'&&old==='Lapse'){
-   const prior=[...(db.salesMotions||[])].reverse().find(m=>String(m.caseId)===caseId&&m.type==='Lapse (negative TPC)'&&m.negativeTPC&&!m.reversedBy);
-   const m=addSalesMotion(policy,'Revival',date,{tpcDelta:prior?Math.abs(tpc(policy)):0,caseDelta:prior?1:0});if(prior)prior.reversedBy=m.id;return m;
+   const prior=priorLapse;
+   const m=addSalesMotion(policy,'Revival',date,{tpcDelta:prior?Math.abs(tpc(policy)):0,caseDelta:prior?1:0});
+   if(prior)prior.reversedBy=m.id;
+   return m;
  }
  return null;
 }
@@ -1807,7 +1818,8 @@ function saveCaseForm(e,mode,reduceId){
  const existing=editingId?db.cases.find(c=>String(c.id)===String(editingId)):null;
  const oldStatus=existing?normalizeStatus(existing.policyMotionStatus||existing.status):'To Approach';
  const selectedStatus=normalizeStatus(o.status||oldStatus);
- const newStatus=(oldStatus==='ROP'&&selectedStatus==='Inforce')?'ROP Revoke':selectedStatus;
+ const hasOpenROP=!!(existing&&unresolvedPolicyMotion(existing.id,'ROP'));
+ const newStatus=((oldStatus==='ROP'||hasOpenROP)&&selectedStatus==='Inforce')?'ROP Revoke':selectedStatus;
  // ROP is a sales-motion overlay: keep the underlying policy Inforce and active.
  // Returning directly to Inforce from ROP is treated as a Revoke event so the negative entry cannot remain stranded.
  const storedStatus=(newStatus==='ROP'||newStatus==='ROP Revoke'||newStatus==='Revival')?'Inforce':newStatus;
@@ -2973,10 +2985,11 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
  function iosHome(){
    const now=selectedHomeDate(), key=window.homeMonthKey, view=window.homeTPCView||'month';
    const period=homeTPCPeriodInfo(view,now);
-   const prod=db.cases.filter(c=>c.inforce&&c.inforce>=period.start&&c.inforce<=period.end&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce');
-   const prevProd=db.cases.filter(c=>c.inforce&&c.inforce>=period.prevStart&&c.inforce<=period.prevEnd&&c.kind!=='Reduce'&&normalizeStatus(c.status)==='Inforce');
-   const tpcNow=prod.reduce((s,c)=>s+tpc(c),0),tpcPrev=prevProd.reduce((s,c)=>s+tpc(c),0);
-   const cases=prod.length;
+   // Home headline uses the same net production ledger as Sales history,
+   // including ROP/Lapse deductions and ROP Revoke/Revival credits by motion month.
+   const prod=salesTrackingRows(period.start,period.end);
+   const tpcNow=salesTPCInRange(period.start,period.end),tpcPrev=salesTPCInRange(period.prevStart,period.prevEnd);
+   const cases=salesCasesInRange(period.start,period.end);
    const pendingRows=db.cases.filter(c=>c.kind!=='Existing Policy'&&['To Follow Up','To Submit','To Approve'].includes(normalizeStatus(c.status)));
    const pending=pendingRows.length;
    const follow=db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='To Follow Up').length;
