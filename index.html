@@ -1925,7 +1925,7 @@ function homeProductionBreakdown(type){
   const view=window.homeTPCView||'month';
   if(typeof window.homeTPCPeriodInfo !== 'function') throw new Error('Home period helper is unavailable');
   const period=window.homeTPCPeriodInfo(view,selectedDate), selectedLabel=period.label;
-  const rows=salesTrackingRows(period.start,period.end);
+  const rows=salesTrackingRows(period.start,period.end).sort((a,b)=>String(b.inforce||b.date||'').localeCompare(String(a.inforce||a.date||'')) || String(a.client||'').localeCompare(String(b.client||'')));
   const totalTPC = rows.reduce((s,c)=>s+tpc(c),0);
   const caseCount = db.cases.filter(c=>c.inforce&&c.inforce>=period.start&&c.inforce<=period.end&&c.kind!=='Reduce'&&isHistoricalPolicyStatus(c.status)).length+rows.filter(c=>c.kind==='Sales Motion').reduce((sum,c)=>sum+(Number(c.salesCaseDelta)||0),0);
   const title = type==='TPC' ? `${selectedLabel} · TPC Breakdown` : `${selectedLabel} · Cases Breakdown`;
