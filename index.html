@@ -2549,7 +2549,7 @@ function income(){
  while(cursor<=now){let key=monthKey(cursor),v=active.reduce((sum,c)=>sum+monthlyPolicyCommissionAt(c,key),0)+incomeMotionsForMonth(key);months.push({key,v});cursor.setMonth(cursor.getMonth()+1)}
  let currentKey=monthKey(),utd=active.reduce((sum,c)=>sum+monthlyPolicyCommissionAt(c,currentKey),0)+incomeMotionsForMonth(currentKey);
  // Increment is production written this month, based on Inforce Date, not Commencement Date.
- let increment=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((sum,c)=>sum+monthlyComm({...c,forceInforceCommissionStart:true},currentKey+'-01'),0)+incomeMotionsForMonth(currentKey);
+ let increment=db.cases.filter(c=>normalizeStatus(c.status)==='Inforce'&&c.kind!=='Existing Policy'&&c.inforce?.startsWith(currentKey)).reduce((sum,c)=>sum+monthlyComm({...c,forceInforceCommissionStart:true},currentKey+'-01'),0);
  let clients=clientRecords().length,existingActive=active.filter(c=>c.kind==='Existing Policy').length;
  const max=Math.max(...months.map(x=>x.v),1),rangeCount=months.length;
  // Keep chart bars clean: values are shown in the summary only after a month is selected.
