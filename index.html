@@ -785,8 +785,8 @@ html[data-theme="dark"] .pill{background:rgba(118,118,128,.18);color:#d1d1d6}.ap
 html,body{background:var(--ios-bg)!important;color:var(--ios-text)!important}body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC",sans-serif;-webkit-font-smoothing:antialiased}
 .app{max-width:1180px;padding:0 0 105px;margin:auto}.top{position:relative!important;top:auto!important;border:0!important;background:transparent!important;backdrop-filter:none!important;padding:32px 22px 16px!important;align-items:center}.brandWrap{display:none}.top:before{content:"Sales Tracker";font-size:18px;font-weight:760;letter-spacing:-.02em}.top:after{content:"";display:block}.topActions{margin-left:auto}.topActions .langBtn{display:none}.topActions #newCaseBtn{width:42px;height:42px;padding:0;border-radius:50%;font-size:0;background:var(--ios-blue);box-shadow:0 8px 20px rgba(0,122,255,.25)}.topActions #newCaseBtn:after{content:'+';font-size:25px;font-weight:300}
 main{padding:0 18px!important}.section{font-size:16px;font-weight:750;margin:24px 0 11px}.card,.item{background:var(--ios-card)!important;border:1px solid rgba(255,255,255,.75)!important;box-shadow:var(--ios-shadow)!important;border-radius:22px!important}.card:hover,.card[onclick]:hover{transform:none!important;box-shadow:var(--ios-shadow)!important}.metric{font-size:30px;font-weight:780;letter-spacing:-.055em}.label,.small{color:var(--ios-muted)!important}.pill{border:0!important}.pill.green{background:rgba(52,199,89,.12)!important;color:#248a3d!important}.pill.yellow{background:rgba(255,159,10,.12)!important;color:#a56500!important}.pill.red{background:rgba(255,59,48,.12)!important;color:#c92820!important}
-#nav{position:fixed;left:50%;bottom:calc(12px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:80;width:min(430px,calc(100% - 28px));height:68px;margin:0!important;padding:7px!important;display:grid!important;grid-template-columns:repeat(4,1fr);gap:3px!important;border:1px solid rgba(255,255,255,.75)!important;border-radius:24px!important;background:rgba(248,248,250,.78)!important;box-shadow:0 16px 45px rgba(0,0,0,.16)!important;backdrop-filter:blur(28px) saturate(180%)!important;overflow:visible!important}
-#nav button{height:54px;padding:5px 2px!important;border:0!important;border-radius:18px!important;background:transparent!important;color:#8e8e93!important;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-weight:600!important}#nav button span{font-size:20px;line-height:20px}.#nav button em{font-style:normal;font-size:10px;line-height:13px}.#nav button.active{background:rgba(0,122,255,.11)!important;color:var(--ios-blue)!important;box-shadow:none!important}
+#nav{position:fixed;left:50%;bottom:calc(12px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:80;width:min(430px,calc(100% - 28px));height:68px;margin:0!important;padding:7px!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px!important;border:1px solid rgba(255,255,255,.75)!important;border-radius:24px!important;background:rgba(248,248,250,.78)!important;box-shadow:0 16px 45px rgba(0,0,0,.16)!important;backdrop-filter:blur(28px) saturate(180%)!important;overflow:visible!important}
+#nav button{height:54px;min-width:0;padding:5px 1px!important;border:0!important;border-radius:18px!important;background:transparent!important;color:#8e8e93!important;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-weight:600!important}#nav button span{font-size:20px;line-height:20px}#nav button em{font-style:normal;font-size:10px;line-height:13px;white-space:nowrap;letter-spacing:-.02em}.#nav button.active{background:rgba(0,122,255,.11)!important;color:var(--ios-blue)!important;box-shadow:none!important}
 .iosHomeHead{padding:8px 3px 6px}.iosGreeting{font-size:15px;color:var(--ios-muted);margin-bottom:1px}.iosName{font-size:34px;font-weight:800;letter-spacing:-.055em;line-height:1.05}.iosDateRow{display:flex;justify-content:space-between;align-items:center;margin-top:18px}.iosMonth{display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border-radius:14px;background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.75);font-size:13px;font-weight:650}.iosProfile{width:40px;height:40px;border-radius:50%;background:linear-gradient(145deg,#dbe9ff,#f4f4f4);display:grid;place-items:center;color:#3569a8;font-weight:800;border:2px solid #fff;box-shadow:0 5px 16px rgba(0,0,0,.1)}
 .homeTPCControls{display:flex;gap:6px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 56px)}.homeTPCControls select{max-width:140px;min-width:0;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.85);padding:10px 9px;font-size:12px;color:var(--text)}.homeTPCControls .homeMonthButton{font-size:13px;padding:10px 12px;min-height:44px;white-space:nowrap;touch-action:manipulation}.heroTPC{margin-top:16px;padding:20px 19px 16px!important;position:relative;overflow:hidden;background:linear-gradient(145deg,rgba(255,255,255,.94),rgba(238,246,255,.74))!important}.heroTPC:after{content:"";position:absolute;width:180px;height:180px;right:-80px;top:-90px;background:radial-gradient(circle,rgba(0,122,255,.18),transparent 67%);pointer-events:none}.heroTop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.heroTitle{font-size:13px;color:var(--ios-muted);font-weight:650}.heroValue{font-size:39px;font-weight:820;letter-spacing:-.06em;margin-top:3px}.growth{display:inline-flex;align-items:center;padding:7px 9px;border-radius:12px;background:rgba(52,199,89,.12);color:#248a3d;font-size:12px;font-weight:750}.heroBars{height:72px;display:flex;align-items:end;gap:5px;margin-top:10px}.heroBars i{flex:1;border-radius:5px 5px 2px 2px;background:linear-gradient(180deg,#69a9ff,#d9eaff);min-width:7px}.heroBars i:last-child{background:var(--ios-blue)}
 .quickStats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.quickStat{padding:14px 15px!important;display:flex;align-items:center;gap:11px}.qIcon{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:rgba(0,122,255,.1);color:var(--ios-blue);font-size:17px}.qIcon.orange{background:rgba(255,159,10,.12);color:var(--ios-orange)}.qLabel{font-size:11px;color:var(--ios-muted)}.qValue{font-size:19px;font-weight:760;margin-top:2px}
@@ -1494,6 +1494,7 @@ button,a,[role="button"],[onclick],.tab,.navBtn,.menuBtn,.quickAction,.breakdown
 <button class="active" data-page="home" onclick="show('home',this)"><span class="navEmoji">🏠</span><em>Home</em></button>
 <button data-page="pipeline" onclick="show('pipeline',this)"><span class="navEmoji">🗂️</span><em>Pipeline</em></button>
 <button data-page="portfolio" onclick="show('portfolio',this)"><span class="navEmoji">📋</span><em>Portfolio</em></button>
+<button data-page="contest" onclick="show('contest',this)"><span class="navEmoji">🏆</span><em>Contest</em></button>
 <button data-page="more" onclick="openMoreMenu(this)"><span class="navEmoji">☰</span><em>More</em></button>
 </nav>
 <script>
@@ -1503,7 +1504,7 @@ const defaults={
  products:["Basic Term Assurance","PRU88","PRUCash Assurance With Profits","PRUCash Double Reward","PRUCash Enrich","Prudential Protection Plus Policy 70%","PRUElite Invest","PRUGrowth","PRUlady","PRULady Term Assurance","PRULife Ready","PRULink","PRULink Assurance Account","PRULink Assurance Plan","PRULink Investor Account","PRULink Million","PRULink One","PRUMy Child","PRUSave Assurance With Profits","PRUVantage","PRUWealth","PRUWealth Enrich","PRUWealth Enrich 2.0","PRUWealth Max","PRUWealth Plus","PRUWith You","PRUWith You Plus"],
  groups:["A","B","C","D"],
  benefits:["Death / TPD","TMCC","43 CI","Acci Death / TPD","Acci Medical Reimbursement (per case)","Medical Card","Payor"],
- rates:[.25,.25,.135,.185,.15,.15],theme:"ivory",tapSoundEnabled:true,tapTone:"soft"
+ rates:[.25,.25,.135,.185,.15,.15],theme:"ivory",tapSoundEnabled:true,tapTone:"soft",dockPages:["pipeline","portfolio","contest"]
 };
 let db=JSON.parse(localStorage.getItem(KEY)||'null')||{cases:[],clients:[],contests:[],settings:structuredClone(defaults)};
 db.cases=db.cases||[];db.clients=db.clients||[];db.contests=db.contests||[];db.salesMotions=db.salesMotions||[];db.coverageAnalyses=db.coverageAnalyses||[];db.behaviourTracker=db.behaviourTracker||{targets:{},logs:[]};db.behaviourTracker.targets=db.behaviourTracker.targets||{};db.behaviourTracker.logs=db.behaviourTracker.logs||[];
@@ -3021,11 +3022,48 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
     <div class="iosRow settingsScheduleRow" onclick="openNotificationSchedule('quietHours')"><div class="rowIcon">⌚</div><div class="rowBody"><div class="rowTitle">Quiet Hours</div><div class="rowSub">${timeLabel(db.notificationPrefs?.quietStart??22)} – ${timeLabel(db.notificationPrefs?.quietEnd??8)} · ${db.notificationPrefs?.timezone||'Asia/Kuala_Lumpur'}</div></div><div class="iosChevron">›</div></div>
    </div></div>
    <div class="settingsGroup"><div class="settingsGroupTitle">Setup</div><div class="iosList"><div class="iosRow" onclick="openSettingManager('products')"><div class="rowIcon">▦</div><div class="rowBody"><div class="rowTitle">Products</div><div class="rowSub">${db.settings.products.length} products · reorder or remove</div></div><div class="iosChevron">›</div></div><div class="iosRow" onclick="openSettingManager('groups')"><div class="rowIcon">◎</div><div class="rowBody"><div class="rowTitle">Client Groups</div><div class="rowSub">${db.settings.groups.length} groups</div></div><div class="iosChevron">›</div></div><div class="iosRow" onclick="openSettingManager('benefits')"><div class="rowIcon">♡</div><div class="rowBody"><div class="rowTitle">Benefits</div><div class="rowSub">${db.settings.benefits.length} benefit types</div></div><div class="iosChevron">›</div></div></div></div>
+   <div class="settingsGroup"><div class="settingsGroupTitle">Dock Navigation</div><div class="iosList dockSettingsList"><div class="dockSettingsIntro">Choose the 3 shortcuts shown between Home and More. Home and More stay fixed, and you can change these anytime.</div>${[0,1,2].map(i=>`<div class="iosRow dockSettingRow"><div class="rowIcon">${i+1}</div><div class="rowBody"><div class="rowTitle">Dock slot ${i+1}</div><div class="rowSub">Choose a page shortcut</div></div><select class="dockPageSelect" aria-label="Dock slot ${i+1}" onchange="setDockPage(${i},this.value)">${dockPageOptions(i)}</select></div>`).join('')}</div></div>
    <div class="settingsGroup"><div class="settingsGroupTitle">About</div><div class="iosList"><div class="iosRow"><div class="rowIcon">ⓘ</div><div class="rowBody"><div class="rowTitle">Sales Tracker</div><div class="rowSub">Apple Native UI · Cloud Sync enabled</div></div><div class="small">V2.7.1</div></div></div></div></div>`;
+ };
+ // Configurable dock: Home and More are fixed; the three middle shortcuts are user-selectable.
+ const DOCK_PAGE_META={pipeline:{label:'Pipeline',icon:'🗂️'},portfolio:{label:'Portfolio',icon:'📋'},contest:{label:'Contest',icon:'🏆'},sales:{label:'Sales',icon:'📊'},clients:{label:'Clients',icon:'👥'},coverage:{label:'Coverage',icon:'🛡️'},income:{label:'Income',icon:'💰'},settings:{label:'Settings',icon:'⚙️'}};
+ function normalizedDockPages(){
+   const valid=Array.isArray(db.settings.dockPages)?db.settings.dockPages.filter(k=>DOCK_PAGE_META[k]):[];
+   const out=[];for(const k of valid){if(!out.includes(k)&&out.length<3)out.push(k)}
+   for(const k of ['pipeline','portfolio','contest','sales','clients','coverage','income','settings'])if(out.length<3&&!out.includes(k))out.push(k);
+   db.settings.dockPages=out;return out;
+ }
+ function dockPageOptions(slot){
+   const pages=normalizedDockPages(),selected=pages[slot];
+   return Object.entries(DOCK_PAGE_META).map(([key,meta])=>`<option value="${key}" ${key===selected?'selected':''}>${meta.icon} ${meta.label}</option>`).join('');
+ }
+ window.setDockPage=function(slot,value){
+   slot=Number(slot);if(!Number.isInteger(slot)||slot<0||slot>2||!DOCK_PAGE_META[value])return;
+   const pages=normalizedDockPages();const duplicate=pages.indexOf(value);
+   if(duplicate!==-1&&duplicate!==slot){const previous=pages[slot];pages[slot]=value;pages[duplicate]=previous;}
+   else pages[slot]=value;
+   db.settings.dockPages=pages;
+   if(typeof save==='function')save();else{localStorage.setItem(KEY,JSON.stringify(db));window.cloudScheduleSync?.();window.render?.();}
+   if(document.getElementById('settings')&&!document.getElementById('settings').classList.contains('hide'))window.settings();
+   toast('Dock updated');
+ };
+ window.updateConfigurableDock=function(){
+   const nav=document.getElementById('nav');if(!nav)return;
+   const current=nav.querySelector('button.active')?.dataset.page||'home';
+   const pages=normalizedDockPages();
+   const fixed=[{key:'home',label:'Home',icon:'🏠',onclick:"show('home',this)"},...pages.map(key=>({key,label:DOCK_PAGE_META[key].label,icon:DOCK_PAGE_META[key].icon,onclick:`show('${key}',this)`})),{key:'more',label:'More',icon:'☰',onclick:'openMoreMenu(this)'}];
+   nav.innerHTML=fixed.map(item=>`<button type="button" data-page="${item.key}" class="${item.key===current?'active':''}" onclick="${item.onclick}"><span class="navEmoji">${item.icon}</span><em>${item.label}</em></button>`).join('');
+   const visible=[...document.querySelectorAll('main section')].find(el=>!el.classList.contains('hide'));
+   const visibleKey=visible?.id;
+   const activeKey=visibleKey==='clients'?'portfolio':visibleKey;
+   const active=nav.querySelector(`button[data-page="${activeKey}"]`);
+   if(active){nav.querySelectorAll('button').forEach(b=>b.classList.remove('active'));active.classList.add('active');}
  };
  // Route the legacy global function calls through the new Apple Native renderer.
  // The original app uses many internal calls to render(); without this bridge those
  // calls would redraw the old 8-tab layout and make some new controls appear broken.
+ const renderBeforeDockSync=window.render;
+ window.render=function(){renderBeforeDockSync();window.updateConfigurableDock?.();};
  render=window.render;
  show=window.show;
  settings=window.settings;
@@ -3901,4 +3939,15 @@ body{scroll-padding-top:var(--global-header-height,100px)}
   else installGlobalStickyHeader();
 })();
 </script>
+
+<style id="configurable-dock-settings-style">
+.dockSettingsIntro{padding:12px 16px;color:var(--ios-muted);font-size:13px;line-height:1.45}
+.dockSettingRow{gap:10px;min-width:0}
+.dockSettingRow .rowBody{min-width:0;flex:1}
+.dockPageSelect{flex:0 1 48%;width:48%;min-width:112px;max-width:48%;border:1px solid var(--ios-line);border-radius:12px;background:rgba(255,255,255,.9);color:var(--ios-text);font:inherit;font-size:13px;padding:10px 8px;box-sizing:border-box}
+#nav{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+#nav>button{min-width:0!important;padding-left:2px!important;padding-right:2px!important}
+#nav>button em{font-size:11px!important;white-space:nowrap!important;letter-spacing:-.15px}
+@media(max-width:390px){.dockPageSelect{min-width:100px;font-size:12px;padding:9px 5px}.dockSettingRow .rowSub{font-size:11px}#nav>button em{font-size:10px!important}}
+</style>
 </body></html>
