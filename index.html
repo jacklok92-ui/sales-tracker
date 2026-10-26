@@ -1809,18 +1809,38 @@ function setThemeMode(mode){db.settings.theme=mode;localStorage.setItem('salesTr
 })();;
 function render(){applyTheme();document.getElementById('brandSub').textContent='Insurance CRM · V2.0 Cloud';document.getElementById('newCaseBtn').textContent=L('newCase');const labels=['home','pipeline','sales','clients','coverage','contest','income','settings'];document.querySelectorAll('#nav button').forEach((b,i)=>b.textContent=L(labels[i]));[['home',home],['pipeline',pipeline],['sales',sales],['clients',clients],['coverage',coverage],['contest',contest],['income',income],['settings',settings]].forEach(([id,fn])=>{try{fn()}catch(err){console.error('Sales Tracker render error in '+id,err);const el=document.getElementById(id);if(el)el.innerHTML='<div class="card"><b>'+id+' failed to load</b><div class="small" style="margin-top:8px">Please refresh the app. Other sections remain available.</div></div>'}})}
 
-function startCase(){modal('New Case',`<div class="menuGrid"><button class="menuBtn" onclick="chooseNB()">New Business<span>New policy / new sale</span></button><button class="menuBtn" onclick="chooseTU()">Top Up<span>Upgrade an existing policy</span></button></div>`)}
+function startCase(){modal('New Case',`<div class="menuGrid"><button class="menuBtn" onclick="chooseNB()">New Business<span>New policy / new sale</span></button><button class="menuBtn" onclick="chooseTU()">Endorsement<span>Increase or reduce an existing policy</span></button></div>`)}
 function chooseNB(){modal('New Business',`<div class="menuGrid"><button class="menuBtn" onclick="caseForm('new')">New Client<span>Enter client details</span></button><button class="menuBtn" onclick="existingPicker('new')">Existing Client<span>Select an existing client</span></button></div>`)}
-function chooseTU(){existingPicker('topup')}
+function chooseTU(){existingPicker('endorsement')}
 function existingPicker(mode){
  let html=`<div class="field"><label>Client Name</label><input id="clientSearch" placeholder="Type existing client name" oninput="suggestClients('${mode}')"><div id="suggestions" class="list" style="margin-top:8px"></div></div>`;
- modal(mode==='topup'?'Top Up · Select Client':'New Business · Existing Client',html)
+ modal(mode==='endorsement'?'Endorsement · Select Client':'New Business · Existing Client',html)
 }
 function caseFormForClient(mode,index){
  const c=clientRecords()[Number(index)];
  if(!c){toast('Client record not found');return;}
+ if(mode==='endorsement'){endorsementPolicyPicker(c);return;}
  window._selectedClientRecord={...c};
  caseForm(mode,String(c.ic||''),'',String(c.client||''));
+}
+function endorsementPolicyPicker(client){
+ const policies=db.cases.filter(p=>(String(client.ic||'').trim()&&String(p.ic||'').trim()===String(client.ic||'').trim())||(!String(client.ic||'').trim()&&String(p.client||'').trim()===String(client.client||'').trim()));
+ if(!policies.length){toast('No policy found for this client');return;}
+ const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+ modal('Endorsement · Select Policy',`<div class="field"><label>Client</label><input value="${esc(client.client||'')}" disabled></div><div class="field"><label>Policy</label><select id="endorsementPolicy">${policies.map(p=>`<option value="${esc(p.id)}">${esc(p.product||p.type||'Policy')} · ${esc(p.policyNumber||p.id)} · TPC RM ${Number(p.tpc||0).toLocaleString('en-MY')}</option>`).join('')}</select></div><div class="actions"><button type="button" class="secondary" onclick="closeModal()">Cancel</button><button type="button" class="primary" onclick="endorsementForm(document.getElementById('endorsementPolicy').value)">Continue →</button></div>`);
+}
+function endorsementForm(policyId){
+ const policy=db.cases.find(p=>String(p.id)===String(policyId));if(!policy){toast('Policy not found');return;}
+ const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+ modal('New Endorsement',`<form class="newClientForm" onsubmit="saveEndorsement(event,'${esc(policy.id)}')"><div class="formgrid"><div class="field full"><label>Client / Policy</label><input value="${esc(policy.client||'')} · ${esc(policy.product||policy.type||'Policy')} · ${esc(policy.policyNumber||policy.id)}" disabled></div><div class="field full"><label>Endorsement Type</label><select name="direction" id="endorsementDirection" required><option value="increase">Top Up / Increase</option><option value="reduce">Reduce</option></select></div><div class="field"><label>TPC Change (RM)</label><input name="tpcAmount" type="number" min="0.01" step="0.01" required placeholder="Enter absolute TPC amount"></div><div class="field"><label>Commission Change (RM)</label><input name="commissionAmount" type="number" min="0" step="0.01" required placeholder="Enter commission amount"></div><div class="field full"><label>Endorsement Effective Date</label><input name="effectiveDate" type="date" value="${iso(new Date())}" required><div class="small">TPC and commission are posted to the month of this effective date.</div></div><div class="field full" style="background:var(--surface-2,#f5f5f5);padding:12px;border-radius:12px"><b>Case Count Rule</b><div class="small">Increase adds 1 case only when the TPC change is strictly greater than RM1,800. Reduce never deducts case count.</div></div></div><div class="actions newClientActions"><button type="button" class="secondary" onclick="closeModal()">Cancel</button><button class="primary newClientSave">Save Endorsement →</button></div></form>`);
+}
+function saveEndorsement(e,policyId){
+ e.preventDefault();const fd=new FormData(e.target),policy=db.cases.find(p=>String(p.id)===String(policyId));if(!policy){toast('Policy not found');return;}
+ const direction=String(fd.get('direction')||'increase'),amount=Math.abs(Number(fd.get('tpcAmount'))||0),commission=Math.abs(Number(fd.get('commissionAmount'))||0),date=contestDate(fd.get('effectiveDate'))||iso(new Date());
+ if(!(amount>0)){toast('TPC change must be greater than zero');return;}
+ const increase=direction==='increase',tpcDelta=increase?amount:-amount,incomeDelta=increase?commission:-commission,caseDelta=increase&&amount>1800?1:0;
+ addSalesMotion(policy, increase?'Endorsement - Increase':'Endorsement - Reduce',date,{tpcDelta,caseDelta,incomeDelta,countInSales:true});
+ localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();closeModal();render();toast('Endorsement saved');
 }
 function suggestClients(mode){
  const q=(document.getElementById('clientSearch').value||'').trim().toLowerCase();
@@ -4025,7 +4045,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     'Home':'首页','首页':'Home','Pipeline':'管线','管线':'Pipeline','Portfolio':'保单组合','保单组合':'Portfolio','More':'更多','更多':'More',
     'Sales':'销售','销售':'Sales','Clients':'客户','客户':'Clients','Coverage':'保障分析','保障分析':'Coverage','Contest':'竞赛','竞赛':'Contest','Income':'收入','收入':'Income','Settings':'设置','设置':'Settings',
     '＋ New Case':'＋ 新增 Case','＋ 新增 Case':'＋ New Case','Close':'关闭','关闭':'Close','Cancel':'取消','取消':'Cancel','Save':'保存','保存':'Save',
-    'New Business':'新业务','新业务':'New Business','New Client':'新客户','新客户':'New Client','Existing Client':'现有客户','现有客户':'Existing Client','Top Up':'加保 / Top Up','加保 / Top Up':'Top Up',
+    'New Business':'新业务','新业务':'New Business','New Client':'新客户','新客户':'New Client','Existing Client':'现有客户','现有客户':'Existing Client','Top Up':'加保 / Top Up','加保 / Top Up':'Top Up','Endorsement':'保单批改','保单批改':'Endorsement',
     'Client Name':'客户姓名','客户姓名':'Client Name','Client Group':'客户组别','客户组别':'Client Group','Status':'状态','状态':'Status','Product':'产品','产品':'Product','Benefits':'保障项目','保障项目':'Benefits','Coverage Amount':'保障额','保障额':'Coverage Amount',
     'Policy Review':'保单检阅','保单检阅':'Policy Review','Add Client':'新增客户','新增客户':'Add Client','Import':'导入','导入':'Import',
     'Pipeline Overview':'管线概览','管线概览':'Pipeline Overview','To Follow Up':'待跟进','待跟进':'To Follow Up','To Meet Up':'待约见','待约见':'To Meet Up','To Submit':'待呈交','待呈交':'To Submit','To Approve':'待批准','待批准':'To Approve',
