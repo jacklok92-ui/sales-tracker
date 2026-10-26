@@ -1535,11 +1535,13 @@ const defaults={
  products:["Basic Term Assurance","PRU88","PRUCash Assurance With Profits","PRUCash Double Reward","PRUCash Enrich","Prudential Protection Plus Policy 70%","PRUElite Invest","PRUGrowth","PRUlady","PRULady Term Assurance","PRULife Ready","PRULink","PRULink Assurance Account","PRULink Assurance Plan","PRULink Investor Account","PRULink Million","PRULink One","PRUMy Child","PRUSave Assurance With Profits","PRUVantage","PRUWealth","PRUWealth Enrich","PRUWealth Enrich 2.0","PRUWealth Max","PRUWealth Plus","PRUWith You","PRUWith You Plus"],
  groups:["A","B","C","D"],
  benefits:["Death / TPD","TMCC","43 CI","Acci Death / TPD","Acci Medical Reimbursement (per case)","Medical Card","Payor"],
- rates:[.25,.25,.135,.185,.15,.15],theme:"ivory",tapSoundEnabled:true,tapTone:"soft",dockPages:["pipeline","portfolio","contest"]
+ rates:[.25,.20,.135,.185,.15,.15],theme:"ivory",tapSoundEnabled:true,tapTone:"soft",dockPages:["pipeline","portfolio","contest"]
 };
 let db=JSON.parse(localStorage.getItem(KEY)||'null')||{cases:[],clients:[],contests:[],settings:structuredClone(defaults)};
 db.cases=db.cases||[];db.clients=db.clients||[];db.contests=db.contests||[];db.salesMotions=db.salesMotions||[];db.coverageAnalyses=db.coverageAnalyses||[];db.behaviourTracker=db.behaviourTracker||{targets:{},logs:[]};db.behaviourTracker.targets=db.behaviourTracker.targets||{};db.behaviourTracker.logs=db.behaviourTracker.logs||[];db.caseStageHistory=Array.isArray(db.caseStageHistory)?db.caseStageHistory:[];db.dailyReportCheckins=db.dailyReportCheckins&&typeof db.dailyReportCheckins==='object'?db.dailyReportCheckins:{};db.dailyReportSnapshots=db.dailyReportSnapshots&&typeof db.dailyReportSnapshots==='object'?db.dailyReportSnapshots:{};
 db.settings={...structuredClone(defaults),...(db.settings||{})};
+// Commission-rate update: Year 2 is now 20% for existing and new installs.
+db.settings.rates=Array.isArray(db.settings.rates)?db.settings.rates:[...defaults.rates];db.settings.rates[1]=0.20;
 const DEFAULT_NOTIFICATION_PREFS={enabled:true,dailyBriefing:true,dailyBriefingHour:9,pipelineReminders:true,pipelineHour:15,inactiveReminder:true,inactiveHour:18,monthlyProgress:true,monthlyProgressDay:1,monthlyProgressHour:9,quietStart:22,quietEnd:8,timezone:'Asia/Kuala_Lumpur'};
 let appLang=localStorage.getItem('salesTrackerLang')||'zh';
 db.notificationPrefs={...DEFAULT_NOTIFICATION_PREFS,...(db.notificationPrefs||{})};
@@ -1829,18 +1831,44 @@ function endorsementPolicyPicker(client){
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  modal('Endorsement · Select Policy',`<div class="field"><label>Client</label><input value="${esc(client.client||'')}" disabled></div><div class="field"><label>Policy</label><select id="endorsementPolicy">${policies.map(p=>`<option value="${esc(p.id)}">${esc(p.product||p.type||'Policy')} · ${esc(p.policyNumber||p.id)} · TPC RM ${Number(p.tpc||0).toLocaleString('en-MY')}</option>`).join('')}</select></div><div class="actions"><button type="button" class="secondary" onclick="closeModal()">Cancel</button><button type="button" class="primary" onclick="endorsementForm(document.getElementById('endorsementPolicy').value)">Continue →</button></div>`);
 }
+function endorsementCommissionEstimate(policy,amount,date,direction){
+ const startDate=calculatedCommencement(policy.inforce)||policy.inforce||policy.commissionStart||policy.commencement||'';
+ if(!startDate||!date)return {value:0,rate:0,year:0,period:'No commencement date'};
+ const start=new Date(startDate+'T00:00:00'),d=new Date(date+'T00:00:00');
+ const m=Math.floor((d.getFullYear()-start.getFullYear())*12+d.getMonth()-start.getMonth())+1;
+ if(m<1)return {value:0,rate:0,year:0,period:'Before commission start'};
+ const year=Math.ceil(m/12),rates=db.settings.rates||defaults.rates,rate=Number(rates[year-1])||0;
+ if(year>duration(policy))return {value:0,rate,year,period:'Outside commission duration'};
+ const annual=Math.abs(Number(amount)||0)*rate*factor(policy);
+ let value=0,period='';
+ if(policy.payMode==='monthly'){value=annual/12;period='Monthly';}
+ else if(policy.payMode==='quarterly'){value=(m%3===1)?annual/4:0;period=(m%3===1)?'Quarterly payment month':'No quarterly commission due this month';}
+ else if(policy.payMode==='halfyearly'){value=(m%6===1)?annual/2:0;period=(m%6===1)?'Half-yearly payment month':'No half-yearly commission due this month';}
+ else {value=(m===((year-1)*12+1))?annual:0;period=(m===((year-1)*12+1))?'Annual payment month':'No annual commission due this month';}
+ return {value:(direction==='reduce'?-1:1)*value,rate,year,period};
+}
+function updateEndorsementPreview(policyId){
+ const policy=db.cases.find(p=>String(p.id)===String(policyId));if(!policy)return;
+ const form=document.getElementById('endorsementForm');if(!form)return;
+ const fd=new FormData(form),direction=String(fd.get('direction')||'increase'),amount=Math.abs(Number(fd.get('tpcAmount'))||0),date=String(fd.get('effectiveDate')||'');
+ const estimate=endorsementCommissionEstimate(policy,amount,date,direction),tpcDelta=direction==='reduce'?-amount:amount,caseDelta=direction==='increase'&&amount>1800?1:0;
+ const node=document.getElementById('endorsementPreview');if(!node)return;
+ node.innerHTML=`<div class="row"><span>TPC movement</span><b>${tpcDelta<0?'−':'+'} RM ${Math.abs(tpcDelta).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2})}</b></div><div class="row"><span>Commission movement</span><b>${estimate.value<0?'−':'+'} RM ${Math.abs(estimate.value).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2})}</b></div><div class="row"><span>Commission rate</span><b>${(estimate.rate*100).toFixed(2)}% · Policy Year ${estimate.year||'—'}</b></div><div class="row"><span>Case count movement</span><b>${caseDelta?'+1':'0'}</b></div><div class="small" style="margin-top:6px">${estimate.period}. Rate uses the policy year based on commencement date and the existing payment-mode rules.</div>`;
+}
 function endorsementForm(policyId){
  const policy=db.cases.find(p=>String(p.id)===String(policyId));if(!policy){toast('Policy not found');return;}
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
- modal('New Endorsement',`<form class="newClientForm" onsubmit="saveEndorsement(event,'${esc(policy.id)}')"><div class="formgrid"><div class="field full"><label>Client / Policy</label><input value="${esc(policy.client||'')} · ${esc(policy.product||policy.type||'Policy')} · ${esc(policy.policyNumber||policy.id)}" disabled></div><div class="field full"><label>Endorsement Type</label><select name="direction" id="endorsementDirection" required><option value="increase">Top Up / Increase</option><option value="reduce">Reduce</option></select></div><div class="field"><label>TPC Change (RM)</label><input name="tpcAmount" type="number" min="0.01" step="0.01" required placeholder="Enter absolute TPC amount"></div><div class="field"><label>Commission Change (RM)</label><input name="commissionAmount" type="number" min="0" step="0.01" required placeholder="Enter commission amount"></div><div class="field full"><label>Endorsement Effective Date</label><input name="effectiveDate" type="date" value="${iso(new Date())}" required><div class="small">TPC and commission are posted to the month of this effective date.</div></div><div class="field full" style="background:var(--surface-2,#f5f5f5);padding:12px;border-radius:12px"><b>Case Count Rule</b><div class="small">Increase adds 1 case only when the TPC change is strictly greater than RM1,800. Reduce never deducts case count.</div></div></div><div class="actions newClientActions"><button type="button" class="secondary" onclick="closeModal()">Cancel</button><button class="primary newClientSave">Save Endorsement →</button></div></form>`);
+ const commencement=calculatedCommencement(policy.inforce)||policy.inforce||policy.commissionStart||policy.commencement||'—';
+ const payMode=policy.payMode||'annual';
+ modal('Endorsement · Policy Details',`<form id="endorsementForm" class="newClientForm" onsubmit="saveEndorsement(event,'${esc(policy.id)}')"><div class="formgrid"><div class="field full"><label>Client</label><input value="${esc(policy.client||'')}" readonly></div><div class="field"><label>Product</label><input value="${esc(policy.product||policy.type||'Policy')}" readonly></div><div class="field"><label>Policy Number</label><input value="${esc(policy.policyNumber||'—')}" readonly></div><div class="field"><label>Current TPC</label><input value="RM ${Number(policy.tpc||0).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2})}" readonly></div><div class="field"><label>Premium</label><input value="RM ${Number(policy.premium||0).toLocaleString('en-MY',{minimumFractionDigits:2,maximumFractionDigits:2})}" readonly></div><div class="field"><label>Payment Mode</label><input value="${esc(payMode)}" readonly></div><div class="field"><label>Payment Term</label><input value="${esc(policy.term||'Full Pay')}" readonly></div><div class="field"><label>Inforce Date</label><input value="${esc(policy.inforce||'—')}" readonly></div><div class="field"><label>Commencement Date</label><input value="${esc(commencement)}" readonly></div><div class="field full"><label>Endorsement Type</label><select name="direction" required onchange="updateEndorsementPreview('${esc(policy.id)}')"><option value="increase">Top Up / Increase</option><option value="reduce">Reduce</option></select></div><div class="field full"><label>TPC Change (RM)</label><input name="tpcAmount" type="number" min="0.01" step="0.01" required placeholder="Enter TPC increase / reduction amount" oninput="updateEndorsementPreview('${esc(policy.id)}')"></div><div class="field full"><label>Endorsement Effective Date</label><input name="effectiveDate" type="date" value="${iso(new Date())}" required onchange="updateEndorsementPreview('${esc(policy.id)}')"><div class="small">TPC and commission are recorded in the month of this effective date.</div></div><div class="field full" style="background:var(--surface-2,#f5f5f5);padding:12px;border-radius:12px"><b>Automatic calculation preview</b><div id="endorsementPreview" style="display:grid;gap:7px;margin-top:9px"><div class="small">Enter a TPC amount to calculate TPC, commission and case count automatically.</div></div><div class="small" style="margin-top:8px">Increase adds 1 case only when TPC change is strictly greater than RM1,800. Reduce never deducts case count.</div></div></div><div class="actions newClientActions"><button type="button" class="secondary" onclick="closeModal()">Cancel</button><button class="primary newClientSave">Save Endorsement →</button></div></form>`);
 }
 function saveEndorsement(e,policyId){
  e.preventDefault();const fd=new FormData(e.target),policy=db.cases.find(p=>String(p.id)===String(policyId));if(!policy){toast('Policy not found');return;}
- const direction=String(fd.get('direction')||'increase'),amount=Math.abs(Number(fd.get('tpcAmount'))||0),commission=Math.abs(Number(fd.get('commissionAmount'))||0),date=contestDate(fd.get('effectiveDate'))||iso(new Date());
+ const direction=String(fd.get('direction')||'increase'),amount=Math.abs(Number(fd.get('tpcAmount'))||0),date=contestDate(fd.get('effectiveDate'))||iso(new Date());
  if(!(amount>0)){toast('TPC change must be greater than zero');return;}
- const increase=direction==='increase',tpcDelta=increase?amount:-amount,incomeDelta=increase?commission:-commission,caseDelta=increase&&amount>1800?1:0;
- addSalesMotion(policy, increase?'Endorsement - Increase':'Endorsement - Reduce',date,{tpcDelta,caseDelta,incomeDelta,countInSales:true});
- localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();closeModal();render();toast('Endorsement saved');
+ const increase=direction==='increase',tpcDelta=increase?amount:-amount,estimate=endorsementCommissionEstimate(policy,amount,date,direction),incomeDelta=estimate.value,caseDelta=increase&&amount>1800?1:0;
+ addSalesMotion(policy,increase?'Endorsement - Increase':'Endorsement - Reduce',date,{tpcDelta,caseDelta,incomeDelta,countInSales:true});
+ localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();closeModal();render();toast('Endorsement saved · TPC, commission and case count calculated');
 }
 function suggestClients(mode){
  const q=(document.getElementById('clientSearch').value||'').trim().toLowerCase();
