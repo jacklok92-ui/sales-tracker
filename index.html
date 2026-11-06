@@ -1920,7 +1920,7 @@ function monthlyComm(c,date){
 }
 // Daily Activities module — Pipeline-linked workflow
 const ACTIVITY_KEY='salesTrackerDailyActivitiesV1';
-function activityStore(){try{const st=JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'{"logs":[]}');let changed=false;(st.logs||[]).forEach(x=>{if(x.kind==='detail'&&!x.caseId&&x.clientId){const matches=(db.cases||[]).filter(c=>String(c.ic||c.client||'')===String(x.clientId));if(matches.length===1){x.caseId=String(matches[0].id);x.clientName=x.clientName||matches[0].client;changed=true}}});if(changed)localStorage.setItem(ACTIVITY_KEY,JSON.stringify(st));return st}catch(e){return {logs:[]}}}
+function activityStore(){try{const st=JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'{"logs":[]}');let changed=false;(st.logs||[]).forEach(x=>{if(x.kind==='detail'&&!x.caseId&&x.clientId){const matches=(db.cases||[]).filter(c=>String(c.ic||c.client||'')===String(x.clientId));if(matches.length===1){x.caseId=String(matches[0].id);x.clientName=matches[0].client;changed=true}}if(x.caseId){const linked=(db.cases||[]).find(c=>String(c.id)===String(x.caseId));if(linked){if(x.clientName!==linked.client){x.clientName=linked.client;changed=true}const currentClientId=String(linked.ic||linked.client||'');if(String(x.clientId||'')!==currentClientId){x.clientId=currentClientId;changed=true}}}});if(changed)localStorage.setItem(ACTIVITY_KEY,JSON.stringify(st));return st}catch(e){return {logs:[]}}}
 function saveActivityStore(x){localStorage.setItem(ACTIVITY_KEY,JSON.stringify(x))}
 function activityDate(){return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kuala_Lumpur'})}
 function activityEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -1929,6 +1929,8 @@ function activityCaseOptions(selected=''){
  const cases=activityPipelineCases().slice().sort((a,b)=>String(a.client||'').localeCompare(String(b.client||'')));
  return '<option value="">General activity / no Pipeline link</option>'+cases.map(c=>`<option value="${activityEsc(c.id)}" ${String(c.id)===String(selected)?'selected':''}>${activityEsc(c.client||'Unnamed client')} · ${activityEsc(normalizeStatus(c.status))}${c.ic?' · '+activityEsc(c.ic):''}</option>`).join('');
 }
+function activityFilterClientSelect(input){const select=document.getElementById('activityPipelineClientSelect');if(!select)return;const query=String(input.value||'').trim().toLowerCase(),selected=String(select.value||'');const rows=activityPipelineCases().slice().sort((a,b)=>String(a.client||'').localeCompare(String(b.client||'')));const matches=rows.filter(c=>!query||[c.client,c.ic,c.product,c.type].some(v=>String(v||'').toLowerCase().includes(query)));const selectedCase=rows.find(c=>String(c.id)===selected);const ordered=selectedCase?[selectedCase,...matches.filter(c=>String(c.id)!==selected)]:matches;select.innerHTML='<option value="">Choose a Pipeline client…</option>'+ordered.map(c=>`<option value="${activityEsc(c.id)}">${String(c.id)===selected?'✓ ':''}${activityEsc(c.client||'Unnamed client')} · ${activityEsc(normalizeStatus(c.status))}${c.ic?' · '+activityEsc(c.ic):''}</option>`).join('');select.value=selected;}
+
 function activityRender(){
  const root=document.getElementById('activities');if(!root)return;
  const store=activityStore(),today=activityDate(),chosen=document.getElementById('activityReportDate')?.value||today;
@@ -1954,11 +1956,11 @@ function activityRender(){
  <div class="activitySectionHead"><div><h2>＋ Detailed Activity</h2><div class="activitySectionSub" style="margin:4px 0 0">Link the activity to a Pipeline client and record the next step.</div></div></div>
  <div class="activityPanel"><form id="activityDetailForm" onsubmit="saveDetailedActivity(event)"><div class="activityFormGrid">
  <label>Activity Date<input name="date" type="date" value="${activityEsc(chosen)}" required></label>
- <label>Pipeline Client<select name="caseId" required>${activityCaseOptions()}</select></label>
+ <label class="activityFull">Search Pipeline Client<input type="search" id="activityPipelineClientSearch" placeholder="Search client name / IC…" oninput="activityFilterClientSelect(this)" autocomplete="off"></label><label>Pipeline Client<select id="activityPipelineClientSelect" name="caseId" required>${activityCaseOptions()}</select></label>
  <label>Activity Type<select name="type" required><option>Phone Call</option><option>WhatsApp</option><option>Meeting</option><option>Follow-up</option><option>Policy Review</option><option>Proposal Presentation</option><option>Application / Documents</option><option>Case Progress</option><option>Other</option></select></label>
  <label>Contact Result<select name="result" required onchange="activityResultChanged(this.value)"><option value="Connected">Connected</option><option value="No Reply">No Reply</option><option value="Appointment Booked">Appointment Booked</option><option value="Interested">Interested</option><option value="Follow-up Needed">Follow-up Needed</option><option value="Not Interested">Not Interested</option><option value="Case Progressed">Case Progressed</option><option value="Other">Other</option></select></label>
  <label id="activityAppointmentWrap" style="display:none">Appointment Date<input name="appointmentDate" type="date"></label>
- <label id="activityNextStageWrap">Update Pipeline Stage<select name="nextStage"><option value="">No status change</option><option value="To Follow Up">To Follow Up</option><option value="To Submit">To Submit</option><option value="To Approve">To Approve</option></select><small class="muted">For completed meetings, choose the next stage when appropriate.</small></label>
+ <label id="activityNextStageWrap">Update Pipeline Stage<select name="nextStage"><option value="">No status change</option><option value="To Meet Up">To Meet Up</option><option value="To Follow Up">To Follow Up</option><option value="To Submit">To Submit</option><option value="To Approve">To Approve</option></select><small class="muted">Choose manually. Pipeline status will only change when you select a stage.</small></label>
  <label class="activityFull">Notes<textarea name="notes" rows="3" placeholder="沟通重点、客户异议、会谈结果…"></textarea></label>
  <label>Next Action<input name="nextAction" placeholder="例如：发送保费方案"></label><label>Next Action Due Date<input name="dueDate" type="date"></label>
  <label class="activityFull">Blocker / Pending Reason<input name="blocker" placeholder="例如：客户需要与配偶讨论"></label>
@@ -1976,11 +1978,9 @@ function saveDetailedActivity(e){
  if(!caseObj){toast('Please select a Pipeline client');return}
  const result=String(fd.get('result')||''),type=String(fd.get('type')||''),appointmentDate=String(fd.get('appointmentDate')||'');
  if(result==='Appointment Booked'&&!appointmentDate){toast('Please enter the appointment date');f.elements.appointmentDate.focus();return}
- const oldStage=normalizeStatus(caseObj.status);let nextStage=String(fd.get('nextStage')||'');
- if(result==='Appointment Booked')nextStage='To Meet Up';
- // Only a completed Meeting may move to Follow Up / Submit / Approve via this field.
- if(type!=='Meeting'&&result!=='Appointment Booked')nextStage='';
- if(nextStage){caseObj.status=nextStage;if(nextStage==='To Meet Up'&&appointmentDate)caseObj.appointmentDate=appointmentDate;try{behaviourRecordTransition(oldStage,nextStage,caseObj,behaviourDate(new Date(String(fd.get('date')||activityDate())+'T00:00:00')))}catch(err){console.warn('Pipeline behaviour log skipped',err)}}
+ const oldStage=normalizeStatus(caseObj.status);const nextStage=String(fd.get('nextStage')||'');
+ // Appointment date is recorded independently. Pipeline stage changes only when the user explicitly selects one.
+ if(nextStage&&nextStage!==oldStage){caseObj.status=nextStage;try{behaviourRecordTransition(oldStage,nextStage,caseObj,behaviourDate(new Date(String(fd.get('date')||activityDate())+'T00:00:00')))}catch(err){console.warn('Pipeline behaviour log skipped',err)}}
  if(appointmentDate&&result==='Appointment Booked')caseObj.appointmentDate=appointmentDate;
  caseObj.lastActivityDate=String(fd.get('date')||activityDate());
  const nextAction=String(fd.get('nextAction')||'').trim(),dueDate=String(fd.get('dueDate')||'');
@@ -1988,7 +1988,7 @@ function saveDetailedActivity(e){
  const st=activityStore();st.logs.push({id:'act_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),kind:'detail',date:String(fd.get('date')||activityDate()),caseId,clientId:String(caseObj.ic||caseObj.client||''),clientName:caseObj.client||'Linked client',type,result,appointmentDate,notes:String(fd.get('notes')||'').trim(),nextAction,dueDate,blocker:String(fd.get('blocker')||'').trim(),pipelineStatusBefore:oldStage,pipelineStatusAfter:normalizeStatus(caseObj.status),time:new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit',hour12:false})});
  saveActivityStore(st);localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();window.__activityCaseFilter=caseId;activityRender();toast(nextStage?`Activity saved · Pipeline moved to ${nextStage}`:'Activity saved');
 }
-function deleteActivityLog(id){if(!confirm('Delete this activity record?'))return;const st=activityStore();st.logs=st.logs.filter(x=>x.id!==id);saveActivityStore(st);activityRender()}
+function deleteActivityLog(id){if(!confirm('Delete this activity record?'))return;const st=activityStore();st.logs=st.logs.filter(x=>x.id!==id);saveActivityStore(st);if(window.cloudReady)window.cloudScheduleSync?.();activityRender()}
 function exportActivityLogs(){const blob=new Blob([JSON.stringify(activityStore(),null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CRM_Daily_Activities.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 
 function show(id,btn){document.querySelectorAll('main section').forEach(x=>x.classList.add('hide'));document.getElementById(id).classList.remove('hide');document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');render()}
@@ -4092,7 +4092,8 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       {key:'behaviourTracker',value:db.behaviourTracker||{targets:{},logs:[]}},
       {key:'language',value:{lang:appLang||'zh'}},
       {key:'notifications',value:db.notificationPrefs||DEFAULT_NOTIFICATION_PREFS},
-      {key:'contestMetadata',value:contestMetadata}
+      {key:'contestMetadata',value:contestMetadata},
+      {key:'dailyActivities',value:activityStore()}
     ].map(x=>({user_id:cloudUser.id,setting_key:x.key,setting_value:x.value,updated_at:new Date().toISOString()}));
     const {error}=await sb.from('app_settings').upsert(payload,{onConflict:'user_id,setting_key'});if(error)throw error;
   }
@@ -4237,6 +4238,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     const coverage=(data.coverage||[]).map(r=>{const x=r.calculation&&typeof r.calculation==='object'?{...r.calculation}:{ };x._cloudId=r.id;x.id=r.id;x.createdAt=r.created_at?new Date(r.created_at).getTime():Date.now();x.clientName=r.client_name||x.clientName||'';x.clientIc=r.client_ic||x.clientIc||'';x.monthlyIncome=num(r.monthly_income);x.spouseIncome=num(r.spouse_income);x.children=num(r.children);x.youngestChildAge=r.youngest_child_age;x.savings=num(r.savings);return x;});
     const settingsRow=(data.settings||[]).find(x=>x.setting_key==='settings');
     const behaviourRow=(data.settings||[]).find(x=>x.setting_key==='behaviourTracker');
+    const activitiesRow=(data.settings||[]).find(x=>x.setting_key==='dailyActivities');
     const langRow=(data.settings||[]).find(x=>x.setting_key==='language');
     const notifRow=(data.settings||[]).find(x=>x.setting_key==='notifications');
     const policySourceByCloudId=new Map((data.policies||[]).map(r=>[String(r.id),String(r.source_reference||r.id)]));
@@ -4254,6 +4256,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     db.clients=clients;db.cases=policies;db.salesMotions=salesMotions;db.contests=contests;db.coverageAnalyses=coverage;
     if(settingsRow?.setting_value)db.settings={...structuredClone(defaults),...settingsRow.setting_value};
     if(behaviourRow?.setting_value)db.behaviourTracker=behaviourRow.setting_value;
+    if(activitiesRow?.setting_value&&Array.isArray(activitiesRow.setting_value.logs)){localStorage.setItem(ACTIVITY_KEY,JSON.stringify(activitiesRow.setting_value));}
     if(langRow?.setting_value?.lang){appLang=langRow.setting_value.lang;localStorage.setItem('salesTrackerLang',appLang)}
     db.notificationPrefs={...DEFAULT_NOTIFICATION_PREFS,...(notifRow?.setting_value||db.notificationPrefs||{})};
     db.cases.forEach(c=>{c.status=normalizeStatus(c.status);c.product=normalizeProduct(c.product)});
@@ -4287,10 +4290,14 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     try{
       const data=await fetchCloud();
       const hadLocalMotions=Array.isArray(db.salesMotions)&&db.salesMotions.length>0;
+      const hadLocalActivities=(activityStore().logs||[]).length>0;
+      const cloudHasActivities=(data.settings||[]).some(x=>x.setting_key==='dailyActivities');
       cloudToLocal(data);
       // If Cloud has no Motion rows but this device has recoverable records,
       // preserve them locally and upload them instead of silently erasing them.
       if((data.motions||[]).length===0&&hadLocalMotions) await upsertPolicyMotions();
+      // One-time migration: preserve local activity history when the cloud key does not exist yet.
+      if(!cloudHasActivities&&hadLocalActivities) await upsertSettings();
       render();
     }
     finally{cloudLoading=false;}
