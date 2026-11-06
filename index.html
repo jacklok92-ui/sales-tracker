@@ -1929,7 +1929,29 @@ function activityCaseOptions(selected=''){
  const cases=activityPipelineCases().slice().sort((a,b)=>String(a.client||'').localeCompare(String(b.client||'')));
  return '<option value="">General activity / no Pipeline link</option>'+cases.map(c=>`<option value="${activityEsc(c.id)}" ${String(c.id)===String(selected)?'selected':''}>${activityEsc(c.client||'Unnamed client')} · ${activityEsc(normalizeStatus(c.status))}${c.ic?' · '+activityEsc(c.ic):''}</option>`).join('');
 }
-function activityFilterClientSelect(input){const select=document.getElementById('activityPipelineClientSelect');if(!select)return;const query=String(input.value||'').trim().toLowerCase(),selected=String(select.value||'');const rows=activityPipelineCases().slice().sort((a,b)=>String(a.client||'').localeCompare(String(b.client||'')));const matches=rows.filter(c=>!query||[c.client,c.ic,c.product,c.type].some(v=>String(v||'').toLowerCase().includes(query)));const selectedCase=rows.find(c=>String(c.id)===selected);const ordered=selectedCase?[selectedCase,...matches.filter(c=>String(c.id)!==selected)]:matches;select.innerHTML='<option value="">Choose a Pipeline client…</option>'+ordered.map(c=>`<option value="${activityEsc(c.id)}">${String(c.id)===selected?'✓ ':''}${activityEsc(c.client||'Unnamed client')} · ${activityEsc(normalizeStatus(c.status))}${c.ic?' · '+activityEsc(c.ic):''}</option>`).join('');select.value=selected;}
+function activityFilterClientSelect(input){
+ const select=document.getElementById('activityPipelineClientSelect'),results=document.getElementById('activityPipelineClientSearchResults');if(!select)return;
+ const norm=v=>String(v??'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();
+ const query=norm(input.value),selected=String(select.value||'');
+ const rows=(db.cases||[]).filter(c=>c&&c.kind!=='Existing Policy'&&['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'].includes(normalizeStatus(c.status)));
+ const matches=rows.filter(c=>!query||[c.client,c.ic,c.product,c.type,c.status].some(v=>norm(v).includes(query))).sort((a,b)=>String(a.client||'').localeCompare(String(b.client||'')));
+ const selectedCase=rows.find(c=>String(c.id)===selected);
+ const ordered=selectedCase?[selectedCase,...matches.filter(c=>String(c.id)!==selected)]:matches;
+ select.innerHTML='<option value="">Choose a Pipeline client…</option>'+ordered.map(c=>`<option value="${activityEsc(c.id)}">${activityEsc(c.client||'Unnamed client')} · ${activityEsc(normalizeStatus(c.status))}${c.ic?' · '+activityEsc(c.ic):''}</option>`).join('');
+ if(selectedCase)select.value=selected;
+ if(results){
+   if(!query){results.style.display='none';results.innerHTML='';return}
+   results.style.display='block';
+   results.innerHTML=matches.length?matches.slice(0,12).map(c=>`<button type="button" onclick="activityChooseSearchClient('${activityEsc(c.id)}')" style="display:block;width:100%;text-align:left;padding:12px 14px;border:0;border-bottom:1px solid #edf0f5;background:#fff;color:#172033;font:inherit"><strong>${activityEsc(c.client||'Unnamed client')}</strong><span style="display:block;font-size:12px;color:#778096;margin-top:2px">${activityEsc(normalizeStatus(c.status))}${c.ic?' · '+activityEsc(c.ic):''}</span></button>`).join(''):'<div style="padding:14px;color:#778096">No matching Pipeline client</div>';
+ }
+}
+function activityChooseSearchClient(id){
+ const select=document.getElementById('activityPipelineClientSelect'),search=document.getElementById('activityPipelineClientSearch'),results=document.getElementById('activityPipelineClientSearchResults');if(!select)return;
+ select.value=String(id);
+ const chosen=(db.cases||[]).find(c=>String(c.id)===String(id));
+ if(search&&chosen)search.value=chosen.client||'';
+ if(results){results.style.display='none';results.innerHTML='';}
+}
 
 function activityRender(){
  const root=document.getElementById('activities');if(!root)return;
@@ -1956,7 +1978,7 @@ function activityRender(){
  <div class="activitySectionHead"><div><h2>＋ Detailed Activity</h2><div class="activitySectionSub" style="margin:4px 0 0">Link the activity to a Pipeline client and record the next step.</div></div></div>
  <div class="activityPanel"><form id="activityDetailForm" onsubmit="saveDetailedActivity(event)"><div class="activityFormGrid">
  <label>Activity Date<input name="date" type="date" value="${activityEsc(chosen)}" required></label>
- <label class="activityFull">Search Pipeline Client<input type="search" id="activityPipelineClientSearch" placeholder="Search client name / IC…" oninput="activityFilterClientSelect(this)" autocomplete="off"></label><label>Pipeline Client<select id="activityPipelineClientSelect" name="caseId" required>${activityCaseOptions()}</select></label>
+ <label class="activityFull">Search Pipeline Client<input type="search" id="activityPipelineClientSearch" placeholder="Search client name / IC…" oninput="activityFilterClientSelect(this)" autocomplete="off"><div id="activityPipelineClientSearchResults" style="display:none;margin-top:8px;border:1px solid #dfe3ee;border-radius:14px;background:#fff;max-height:240px;overflow-y:auto"></div></label><label>Pipeline Client<select id="activityPipelineClientSelect" name="caseId" required>${activityCaseOptions()}</select></label>
  <label>Activity Type<select name="type" required><option>Phone Call</option><option>WhatsApp</option><option>Meeting</option><option>Follow-up</option><option>Policy Review</option><option>Proposal Presentation</option><option>Application / Documents</option><option>Case Progress</option><option>Other</option></select></label>
  <label>Contact Result<select name="result" required onchange="activityResultChanged(this.value)"><option value="Connected">Connected</option><option value="No Reply">No Reply</option><option value="Appointment Booked">Appointment Booked</option><option value="Interested">Interested</option><option value="Follow-up Needed">Follow-up Needed</option><option value="Not Interested">Not Interested</option><option value="Case Progressed">Case Progressed</option><option value="Other">Other</option></select></label>
  <label id="activityAppointmentWrap" style="display:none">Appointment Date<input name="appointmentDate" type="date"></label>
@@ -2146,7 +2168,7 @@ function caseForm(mode,ic='',reduceId='',clientName=''){
  let groupOptions=db.settings.groups.map(g=>`<option ${c.group===g?'selected':''}>${g}</option>`).join('');
  let clientBlock=mode==='new'?`<div class="field"><label>Client Name</label><input name="client" required></div><div class="field"><label>Client IC</label><input name="ic"></div>`:
  (mode==='edit'&&!String(c.client||'').trim()&&!String(c.ic||'').trim()?`<div class="field full"><label>Assign this policy to an existing client</label><select id="repairClientPicker" onchange="fillRepairClient(this.value)" required><option value="">Select client…</option>${clientRecords().filter(r=>String(r.client||'').trim()).map((r,i)=>`<option value="${i}">${String(r.client||'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))}${r.ic?' · '+String(r.ic).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}</option>`).join('')}</select><input type="hidden" name="client" id="repairClientName" value=""><input type="hidden" name="ic" id="repairClientIC" value=""><div class="small">This policy has no client name or IC saved. Select the correct client to repair its association.</div></div>`:
- `<div class="field full"><label>Client Name</label><input value="${c.client||''}" disabled><input type="hidden" name="client" value="${c.client||''}"><input type="hidden" name="ic" value="${c.ic||''}"></div>`);
+ `<div class="field"><label>Client Name</label><input name="client" value="${String(c.client||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}" required></div><div class="field"><label>Client IC</label><input name="ic" value="${String(c.ic||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}"></div>`);
  let top=`${mode==='topup'?`<div class="field full"><label>Existing Product to Top Up</label><select name="parentPolicy">${existingProducts.map(p=>`<option>${p}</option>`).join('')}</select></div>`:''}`;
  let title=isReduce?'Reduce Policy':mode==='topup'?'Top Up':mode==='existing'?'New Business · Existing Client':'New Business · New Client';
  let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','ROP','ROP Revoke','Lapse','Revival','Cancellation','Surrender','Ceased'];
@@ -2204,6 +2226,20 @@ function saveCaseForm(e,mode,reduceId){
    o.parentId=existing.parentId||'';
  }
  upsertClient({client:o.client,ic:o.ic,group:o.group,clientStatus:o.status});
+ // When a client name is corrected, propagate it to every policy/case for the same client
+ // and to linked Activity history (caseId remains the stable relationship key).
+ if(existing&&String(existing.client||'').trim()!==String(o.client||'').trim()){
+   const oldName=String(existing.client||'').trim(),oldIc=String(existing.ic||'').trim(),newName=String(o.client||'').trim();
+   (db.cases||[]).forEach(row=>{
+     const sameClient=oldIc?String(row.ic||'').trim()===oldIc:String(row.client||'').trim()===oldName;
+     if(sameClient){row.client=newName;if(o.ic)row.ic=o.ic;}
+   });
+   (db.clients||[]).forEach(row=>{
+     const sameClient=oldIc?String(row.ic||'').trim()===oldIc:String(row.client||'').trim()===oldName;
+     if(sameClient){row.client=newName;if(o.ic)row.ic=o.ic;}
+   });
+   try{const ast=JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'{"logs":[]}');(ast.logs||[]).forEach(log=>{if(String(log.caseId||'')===String(existing.id)|| (oldIc&&String(log.clientId||'')===oldIc)){log.clientName=newName;if(o.ic)log.clientId=o.ic;}});localStorage.setItem(ACTIVITY_KEY,JSON.stringify(ast));}catch(renameErr){console.warn('Activity rename propagation skipped',renameErr);}
+ }
  if(mode==='topup'&&!existing){
    let parent=db.cases.find(c=>(c.client===o.client&&c.product===o.parentPolicy)||c.product===o.parentPolicy);
    o.commissionStart=calculatedCommencement(o.inforce)||o.inforce||'';
@@ -2654,10 +2690,23 @@ function coverage(){
  coverageCalc();
  if(existing.ic){setTimeout(()=>coveragePickClient(existing.ic),0);}
 }
+// Client Portfolio includes only cases that have reached Inforce and have an Inforce Date.
+// Later policy statuses remain visible as historical portfolio records.
+function isClientPortfolioCase(c){
+ return !!String(c?.inforce||'').trim() && isHistoricalPolicyStatus(c?.status);
+}
+function portfolioClientRecords(){
+ return clientRecords().filter(c=>db.cases.some(x=>{
+  const same=(String(c.ic||'').trim()&&String(x.ic||'').trim())
+   ? String(c.ic).trim().toLowerCase()===String(x.ic).trim().toLowerCase()
+   : String(c.client||'').trim().toLowerCase()===String(x.client||'').trim().toLowerCase();
+  return same&&isClientPortfolioCase(x);
+ }));
+}
 function clientFilterMatches(c,f){
  let groups=Array.isArray(f.groups)?f.groups:[], statuses=Array.isArray(f.statuses)?f.statuses:[], products=Array.isArray(f.products)?f.products:[];
- let caseRows=db.cases.filter(x=>(x.ic&&x.ic===c.ic)||(!x.ic&&x.client===c.client));
- let statusHit=caseRows.some(x=>statuses.includes(normalizeStatus(x.status))) || statuses.includes(normalizeStatus(c.clientStatus||''));
+ let caseRows=db.cases.filter(x=>isClientPortfolioCase(x)&&((x.ic&&String(x.ic).trim()===String(c.ic||'').trim())||(!x.ic&&String(x.client||'').trim()===String(c.client||'').trim())));
+ let statusHit=caseRows.some(x=>statuses.includes(normalizeStatus(x.status)));
  let productHit=caseRows.some(x=>products.includes(normalizeProduct(x.product||x.type)));
  return (!f.name||String(c.client||'').toLowerCase().includes(String(f.name).toLowerCase()))
    &&(!f.ic||String(c.ic||'').toLowerCase().includes(String(f.ic).toLowerCase()))
@@ -2666,7 +2715,7 @@ function clientFilterMatches(c,f){
    &&(!products.length||productHit);
 }
 function clients(){
- let f=window.cf||{},all=clientRecords();
+ let f=window.cf||{},all=portfolioClientRecords();
  let list=all.filter(c=>clientFilterMatches(c,f));
  list.sort((a,b)=>String(a.client||'').localeCompare(String(b.client||''),undefined,{sensitivity:'base'}));
  let focusField=window.clientSearchFocus||'';
@@ -2678,7 +2727,7 @@ function clients(){
  <input id="clientSearchIC" placeholder="Client IC" value="${String(f.ic||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}" oninput="window.cf={...(window.cf||{}),ic:this.value};window.clientSearchFocus='ic';window.clientSearchPos=this.selectionStart;clients()">
  <button class="filterBtn" onclick="openClientFilter()">☷ Filter${((f.groups||[]).length+(f.statuses||[]).length+(f.products||[]).length)?` · ${((f.groups||[]).length+(f.statuses||[]).length+(f.products||[]).length)}`:''}</button>
  </div></div>
- <div class="section">${list.length} Client(s)</div><div class="list">${list.map(c=>{let hasIc=String(c.ic||'').trim()!=='';let hasName=String(c.client||'').trim()!=='';let n=c.sourceCaseId?1:db.cases.filter(x=>hasIc?String(x.ic||'').trim()===String(c.ic).trim():hasName&&String(x.client||'').trim()===String(c.client||'').trim()).length;let icArg=String(c.ic||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");let nameArg=String(c.client||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");let caseArg=String(c.sourceCaseId||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");let nameText=String(c.client||'').trim()?String(c.client).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])):('Unnamed Client · '+String(c.sourceCaseId||c.id||'Missing details'));return `<div class="item"><button class="linkBtn" onclick="profile('${icArg}','${nameArg}','${caseArg}')">${nameText}</button><div class="small">${c.ic||'-'} · Group ${c.group||'-'} · ${n} policy record${n===1?'':'s'}</div></div>`}).join('')||'<div class="empty">No matching clients.</div>'}</div>`;
+ <div class="section">${list.length} Client(s)</div><div class="list">${list.map(c=>{let hasIc=String(c.ic||'').trim()!=='';let hasName=String(c.client||'').trim()!=='';let n=c.sourceCaseId?1:db.cases.filter(x=>isClientPortfolioCase(x)&&(hasIc?String(x.ic||'').trim()===String(c.ic).trim():hasName&&String(x.client||'').trim()===String(c.client||'').trim())).length;let icArg=String(c.ic||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");let nameArg=String(c.client||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");let caseArg=String(c.sourceCaseId||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");let nameText=String(c.client||'').trim()?String(c.client).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])):('Unnamed Client · '+String(c.sourceCaseId||c.id||'Missing details'));return `<div class="item"><button class="linkBtn" onclick="profile('${icArg}','${nameArg}','${caseArg}')">${nameText}</button><div class="small">${c.ic||'-'} · Group ${c.group||'-'} · ${n} policy record${n===1?'':'s'}</div></div>`}).join('')||'<div class="empty">No matching clients.</div>'}</div>`;
  if(focusField){
    let el=document.getElementById(focusField==='name'?'clientSearchName':'clientSearchIC');
    if(el){el.focus();let pos=focusPos===null?el.value.length:focusPos;try{el.setSelectionRange(pos,pos)}catch(e){}}
@@ -2686,7 +2735,7 @@ function clients(){
 }
 function openClientFilter(){
  let f=window.cf||{},groups=Array.isArray(f.groups)?f.groups:[],statuses=Array.isArray(f.statuses)?f.statuses:[],products=Array.isArray(f.products)?f.products:[];
- let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'];
+ let statusOptions=['Inforce','ROP','ROP Revoke','Lapse','Revival','Cancellation','Surrender','Ceased'];
  let productOptions=allProducts().sort((a,b)=>a.localeCompare(b));
  let checks=(name,items,selected)=>items.map((x,i)=>`<label class="checkRow"><input type="checkbox" data-filter="${name}" value="${String(x).replace(/"/g,'&quot;')}" ${selected.includes(x)?'checked':''}><span>${x}</span></label>`).join('');
  modal('Filter Clients',`<div class="filterModal">
@@ -2813,7 +2862,7 @@ function profile(ic,clientName='',caseId=''){
  let c=caseId?(db.cases.find(x=>String(x.id||'')===caseId)||db.clients.find(x=>String(x.id||'')===caseId)):(ic?(db.clients.find(x=>String(x.ic||'').trim()===ic)||db.cases.find(x=>String(x.ic||'').trim()===ic)):(clientName?(db.clients.find(x=>!String(x.ic||'').trim()&&String(x.client||'').trim()===clientName)||db.cases.find(x=>String(x.client||'').trim()===clientName)):null));
  if(!c){toast('Client record not found');return;}
  clientName=String(c.client||clientName).trim();
- let rows=(caseId&&!ic&&!clientName)?db.cases.filter(x=>String(x.id||'')===caseId):(ic?db.cases.filter(x=>String(x.ic||'').trim()===ic):clientName?db.cases.filter(x=>String(x.client||'').trim()===clientName):[]);
+ let rows=(caseId&&!ic&&!clientName)?db.cases.filter(x=>String(x.id||'')===caseId&&isClientPortfolioCase(x)):(ic?db.cases.filter(x=>String(x.ic||'').trim()===ic&&isClientPortfolioCase(x)):clientName?db.cases.filter(x=>String(x.client||'').trim()===clientName&&isClientPortfolioCase(x)):[]);
  let products=[...new Set(rows.map(x=>normalizeProduct(x.product||x.type)).filter(Boolean))];
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const benefitRows=(raw)=>{let b={};try{b=typeof raw==='string'?JSON.parse(raw||'{}'):(raw||{})}catch(e){b={}};const labels={b_Death___TPD:'Death / TPD',b_TMCC:'TMCC',b_43_CI:'43 CI',b_Acci_Death___TPD:'Acci Death / TPD',b_Acci_Medical_Reimbursement__per_case_:'Acci Medical Reimbursement (per case)'};let out=[];Object.keys(labels).forEach(k=>{if(b[k]!==undefined&&b[k]!==''&&b[k]!==null)out.push(`<div class="benefitSummaryRow"><span>${labels[k]}</span><strong>${money(Number(b[k])||0)}</strong></div>`)});if(b.med_plan||b.med_limit||b.med_whole||b.med_room||b.med_deduct){let d=[];if(b.med_plan)d.push(`<span>Plan <b>${esc(b.med_plan)}</b></span>`);if(b.med_limit)d.push(`<span>Annual Limit <b>${money(Number(b.med_limit)||0)}</b></span>`);if(b.med_whole)d.push(`<span>Whole Life Limit <b>${money(Number(b.med_whole)||0)}</b></span>`);if(b.med_room)d.push(`<span>Room &amp; Board <b>${money(Number(b.med_room)||0)}</b></span>`);if(b.med_deduct)d.push(`<span>Deductible / Med Saver <b>${money(Number(b.med_deduct)||0)}</b></span>`);out.push(`<div class="benefitSummaryRow benefitMedical"><span>Medical Card</span><div class="benefitDetailGrid">${d.join('')}</div></div>`)}if(b.payor==='on')out.push(`<div class="benefitSummaryRow"><span>Payor</span><strong>Included</strong></div>`);return out.length?`<div class="benefitSummary">${out.join('')}</div>`:`<div class="small" style="padding:10px 0">No benefit details recorded.</div>`};
