@@ -3266,7 +3266,29 @@ function restoreBackup(event){
    const scope=payload.cloud?'Cloud data + settings + local preferences':'App data + local preferences';
    if(!confirm(`Restore this backup?\n\n${summary}\nIncludes: ${scope}\nBackup date: ${payload.createdAt?new Date(payload.createdAt).toLocaleString('en-MY'):'Unknown'}\n\nCurrent app data will be replaced by this backup.`)) return;
    if(payload.cloud && window.cloudReady && window.cloudRestoreSnapshot){
-    await window.cloudRestoreSnapshot(payload.cloud);
+    // Older backup formats may omit policy_motions entirely. Recover from the
+    // local salesMotions array before any cloud deletion is allowed.
+    const cloudSnapshot={...payload.cloud};
+    if(!Array.isArray(cloudSnapshot.policy_motions)){
+     const localMotions=Array.isArray(restored.salesMotions)?restored.salesMotions:[];
+     if(localMotions.length){
+      cloudSnapshot.policy_motions=localMotions.map(m=>({
+       id:crypto.randomUUID(),motion_source_id:String(m.id||salesMotionId()),
+       policy_id:null,policy_source_reference:String(m.caseId||''),
+       client_name:String(m.client||''),client_ic:String(m.ic||''),
+       product:String(m.product||''),policy_number:String(m.policyNumber||''),
+       motion_type:String(m.type||''),motion_date:m.date||null,
+       tpc_delta:Number(m.tpcDelta)||0,case_delta:Number(m.caseDelta)||0,
+       income_delta:Number(m.incomeDelta)||0,negative_tpc:!!m.negativeTPC,
+       count_in_sales:m.countInSales!==false,
+       reversed_by_source_id:String(m.reversedBy||''),
+       created_at:m.createdAt||new Date().toISOString()
+      }));
+     }else{
+      throw new Error('Backup has no policy_motions data or local salesMotions. Cloud restore was stopped to protect existing Motion records.');
+     }
+    }
+    await window.cloudRestoreSnapshot(cloudSnapshot);
    }
    Object.keys(localStorage).filter(k=>k.startsWith('salesTracker')).forEach(k=>localStorage.removeItem(k));
    Object.entries(incoming).forEach(([k,v])=>{if(k.startsWith('salesTracker')) localStorage.setItem(k,String(v))});
@@ -4087,6 +4109,11 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
 
   async function cloudRestoreSnapshot(snapshot){
     if(!cloudUser||!snapshot)return;
+    // Never delete cloud data when the backup does not explicitly contain
+    // the Motion collection. An empty array is valid; a missing key is not.
+    if(!Object.prototype.hasOwnProperty.call(snapshot,'policy_motions')||!Array.isArray(snapshot.policy_motions)){
+      throw new Error('Restore stopped: backup is missing policy_motions. Existing cloud data was not changed.');
+    }
     cloudLoading=true;
     try{
       for(const table of ['policy_motions','policies','coverage_analyses','contests','clients','app_settings']){
@@ -4196,7 +4223,9 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     const langRow=(data.settings||[]).find(x=>x.setting_key==='language');
     const notifRow=(data.settings||[]).find(x=>x.setting_key==='notifications');
     const policySourceByCloudId=new Map((data.policies||[]).map(r=>[String(r.id),String(r.source_reference||r.id)]));
-    const salesMotions=(data.motions||[]).map(r=>({
+    const cloudMotionRows=Array.isArray(data.motions)?data.motions:[];
+    const preserveLocalMotions=cloudMotionRows.length===0&&Array.isArray(db.salesMotions)&&db.salesMotions.length>0;
+    const salesMotions=preserveLocalMotions?db.salesMotions:cloudMotionRows.map(r=>({
       _cloudId:r.id,id:r.motion_source_id||r.id,
       caseId:r.policy_source_reference||policySourceByCloudId.get(String(r.policy_id))||'',
       client:r.client_name||'',ic:r.client_ic||'',product:normalizeProduct(r.product||''),
@@ -4238,7 +4267,15 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
   }
   async function fetchAndApply(){
     cloudLoading=true;
-    try{const data=await fetchCloud();cloudToLocal(data);render();}
+    try{
+      const data=await fetchCloud();
+      const hadLocalMotions=Array.isArray(db.salesMotions)&&db.salesMotions.length>0;
+      cloudToLocal(data);
+      // If Cloud has no Motion rows but this device has recoverable records,
+      // preserve them locally and upload them instead of silently erasing them.
+      if((data.motions||[]).length===0&&hadLocalMotions) await upsertPolicyMotions();
+      render();
+    }
     finally{cloudLoading=false;}
   }
   function setupRealtime(){
