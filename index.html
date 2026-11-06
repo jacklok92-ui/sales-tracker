@@ -4214,7 +4214,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     localStorage.setItem(KEY,JSON.stringify(db));
   }
   async function counts(){
-    const tables=['clients','policies','contests','coverage_analyses']; let total=0;
+    const tables=['clients','policies','policy_motions','contests','coverage_analyses']; let total=0;
     for(const table of tables){const {count,error}=await sb.from(table).select('*',{count:'exact',head:true});if(error)throw error;total+=count||0;}
     return total;
   }
@@ -4222,14 +4222,16 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     const cloudCount=await counts();
     const localCount=(db.clients?.length||0)+(db.cases?.length||0)+(db.contests?.length||0)+(db.coverageAnalyses?.length||0);
     if(cloudCount===0&&localCount>0){
+      // Only the very first device may seed an empty cloud account from local data.
       cloudStatus('First-time setup: uploading this device data…');
       await cloudUploadAll();
       return;
     }
     if(cloudCount>0){
-      cloudStatus('Migrating local policy motion history…');
-      await migrateLocalPolicyMotions();
-      cloudStatus('Loading your cloud data…');
+      // IMPORTANT: once cloud data exists, it is authoritative on every login.
+      // Never upload the logging-in device's potentially stale local snapshot here.
+      // Download/apply cloud first; realtime is attached immediately after this returns.
+      cloudStatus('Loading latest cloud data…');
       await fetchAndApply();
       return;
     }
