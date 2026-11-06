@@ -3989,6 +3989,38 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     if(!rows.length)return;
     const {error}=await sb.from('policies').upsert(rows,{onConflict:'id'}); if(error)throw error;
   }
+  async function upsertPolicyMotions(){
+    const motions=Array.isArray(db.salesMotions)?db.salesMotions:[];
+    if(!motions.length)return;
+    // Resolve local policy IDs to their Supabase policy UUIDs.
+    const {data:policyRows,error:policyError}=await sb.from('policies').select('id,source_reference').eq('user_id',cloudUser.id);
+    if(policyError)throw policyError;
+    const policyMap=new Map((policyRows||[]).map(r=>[String(r.source_reference||''),r.id]));
+    const rows=motions.map(m=>{
+      if(!m._cloudId)m._cloudId=uuid();
+      return {
+        id:m._cloudId,user_id:cloudUser.id,
+        policy_id:policyMap.get(String(m.caseId||''))||null,
+        policy_source_reference:json(m.caseId||''),
+        motion_source_id:json(m.id||''),
+        client_name:json(m.client||''),client_ic:json(m.ic||''),
+        product:json(m.product||''),policy_number:json(m.policyNumber||''),
+        motion_type:json(m.type||''),motion_date:m.date||null,
+        tpc_delta:num(m.tpcDelta),case_delta:num(m.caseDelta),
+        income_delta:num(m.incomeDelta),negative_tpc:!!m.negativeTPC,
+        count_in_sales:m.countInSales!==false,
+        reversed_by_source_id:json(m.reversedBy||''),
+        created_at:m.createdAt||new Date().toISOString(),
+        updated_at:new Date().toISOString()
+      };
+    });
+    const {error}=await sb.from('policy_motions').upsert(rows,{onConflict:'id'});
+    if(error)throw error;
+  }
+  async function migrateLocalPolicyMotions(){
+    if(!Array.isArray(db.salesMotions)||!db.salesMotions.length)return;
+    await upsertPolicyMotions();
+  }
   async function upsertContests(){
     const rows=(db.contests||[]).map(c=>{ensureCloudId(c);return{id:c._cloudId,user_id:cloudUser.id,name:json(c.name||''),start_date:c.start||null,end_date:c.end||null,metric:json(c.metric||'TPC'),product_restriction:c.type? [normalizeProduct(c.type)]:[],target:num(c.target),updated_at:new Date().toISOString()}});
     if(!rows.length)return; const {error}=await sb.from('contests').upsert(rows,{onConflict:'id'});if(error)throw error;
@@ -4023,6 +4055,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     return {
       clients:data.clients||[],
       policies:data.policies||[],
+      policy_motions:data.motions||[],
       contests:data.contests||[],
       coverage_analyses:data.coverage||[],
       app_settings:data.settings||[]
@@ -4035,7 +4068,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     cloudLoading=true;
     try{
       // Delete children before clients because policies reference clients.
-      for(const table of ['policies','coverage_analyses','contests','clients','app_settings']){
+      for(const table of ['policy_motions','policies','coverage_analyses','contests','clients','app_settings']){
         const {error}=await sb.from(table).delete().eq('user_id',cloudUser.id);
         if(error)throw error;
       }
@@ -4048,17 +4081,19 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     if(!cloudUser||!snapshot)return;
     cloudLoading=true;
     try{
-      for(const table of ['policies','coverage_analyses','contests','clients','app_settings']){
+      for(const table of ['policy_motions','policies','coverage_analyses','contests','clients','app_settings']){
         const {error}=await sb.from(table).delete().eq('user_id',cloudUser.id);
         if(error)throw error;
       }
       const clients=(snapshot.clients||[]).map(r=>({...r,user_id:cloudUser.id}));
       const policies=(snapshot.policies||[]).map(r=>({...r,user_id:cloudUser.id}));
+      const policyMotions=(snapshot.policy_motions||[]).map(r=>({...r,user_id:cloudUser.id}));
       const contests=(snapshot.contests||[]).map(r=>({...r,user_id:cloudUser.id}));
       const coverage=(snapshot.coverage_analyses||[]).map(r=>({...r,user_id:cloudUser.id}));
       const settings=(snapshot.app_settings||[]).map(r=>({...r,user_id:cloudUser.id}));
       if(clients.length){const {error}=await sb.from('clients').insert(clients);if(error)throw error;}
       if(policies.length){const {error}=await sb.from('policies').insert(policies);if(error)throw error;}
+      if(policyMotions.length){const {error}=await sb.from('policy_motions').insert(policyMotions);if(error)throw error;}
       if(contests.length){const {error}=await sb.from('contests').insert(contests);if(error)throw error;}
       if(coverage.length){const {error}=await sb.from('coverage_analyses').insert(coverage);if(error)throw error;}
       if(settings.length){const {error}=await sb.from('app_settings').insert(settings);if(error)throw error;}
@@ -4104,6 +4139,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     try{
       const clientMap=await upsertClients();
       await upsertPolicies(clientMap);
+      await upsertPolicyMotions();
       await upsertContests();
       await upsertCoverage();
       await upsertSettings();
@@ -4117,15 +4153,16 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     clearTimeout(cloudTimer); cloudTimer=setTimeout(()=>cloudUploadAll(),650);
   };
   async function fetchCloud(){
-    const [clientsR,policiesR,contestsR,covR,settingsR]=await Promise.all([
+    const [clientsR,policiesR,motionsR,contestsR,covR,settingsR]=await Promise.all([
       sb.from('clients').select('*').order('name'),
       sb.from('policies').select('*').order('inforce_date',{ascending:true,nullsFirst:false}),
+      sb.from('policy_motions').select('*').order('motion_date',{ascending:true}),
       sb.from('contests').select('*').order('start_date',{ascending:false}),
       sb.from('coverage_analyses').select('*').order('created_at',{ascending:false}),
       sb.from('app_settings').select('*')
     ]);
-    for(const r of [clientsR,policiesR,contestsR,covR,settingsR])if(r.error)throw r.error;
-    return {clients:clientsR.data||[],policies:policiesR.data||[],contests:contestsR.data||[],coverage:covR.data||[],settings:settingsR.data||[]};
+    for(const r of [clientsR,policiesR,motionsR,contestsR,covR,settingsR])if(r.error)throw r.error;
+    return {clients:clientsR.data||[],policies:policiesR.data||[],motions:motionsR.data||[],contests:contestsR.data||[],coverage:covR.data||[],settings:settingsR.data||[]};
   }
   function cloudToLocal(data){
     const clients=(data.clients||[]).map(r=>({_cloudId:r.id,client:r.name||'',ic:r.ic||'',group:r.client_group||'',spouseIncome:num(r.spouse_income),monthlyIncome:num(r.monthly_income),children:num(r.children),youngestChildAge:r.youngest_child_age==null?'':num(r.youngest_child_age),notes:r.notes||''}));
@@ -4150,7 +4187,17 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     const behaviourRow=(data.settings||[]).find(x=>x.setting_key==='behaviourTracker');
     const langRow=(data.settings||[]).find(x=>x.setting_key==='language');
     const notifRow=(data.settings||[]).find(x=>x.setting_key==='notifications');
-    db.clients=clients;db.cases=policies;db.contests=contests;db.coverageAnalyses=coverage;
+    const policySourceByCloudId=new Map((data.policies||[]).map(r=>[String(r.id),String(r.source_reference||r.id)]));
+    const salesMotions=(data.motions||[]).map(r=>({
+      _cloudId:r.id,id:r.motion_source_id||r.id,
+      caseId:r.policy_source_reference||policySourceByCloudId.get(String(r.policy_id))||'',
+      client:r.client_name||'',ic:r.client_ic||'',product:normalizeProduct(r.product||''),
+      policyNumber:r.policy_number||'',type:r.motion_type||'',date:r.motion_date||'',
+      tpcDelta:num(r.tpc_delta),caseDelta:num(r.case_delta),incomeDelta:num(r.income_delta),
+      negativeTPC:!!r.negative_tpc,countInSales:r.count_in_sales!==false,
+      createdAt:r.created_at||'',reversedBy:r.reversed_by_source_id||''
+    }));
+    db.clients=clients;db.cases=policies;db.salesMotions=salesMotions;db.contests=contests;db.coverageAnalyses=coverage;
     if(settingsRow?.setting_value)db.settings={...structuredClone(defaults),...settingsRow.setting_value};
     if(behaviourRow?.setting_value)db.behaviourTracker=behaviourRow.setting_value;
     if(langRow?.setting_value?.lang){appLang=langRow.setting_value.lang;localStorage.setItem('salesTrackerLang',appLang)}
@@ -4172,6 +4219,8 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       return;
     }
     if(cloudCount>0){
+      cloudStatus('Migrating local policy motion history…');
+      await migrateLocalPolicyMotions();
       cloudStatus('Loading your cloud data…');
       await fetchAndApply();
       return;
@@ -4187,6 +4236,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     cloudChannel=sb.channel('sales-tracker-sync')
       .on('postgres_changes',{event:'*',schema:'public',table:'clients',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
       .on('postgres_changes',{event:'*',schema:'public',table:'policies',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
+      .on('postgres_changes',{event:'*',schema:'public',table:'policy_motions',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
       .on('postgres_changes',{event:'*',schema:'public',table:'contests',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
       .on('postgres_changes',{event:'*',schema:'public',table:'coverage_analyses',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
       .on('postgres_changes',{event:'*',schema:'public',table:'app_settings',filter:`user_id=eq.${cloudUser.id}`},()=>cloudRealtimeChanged())
