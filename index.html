@@ -4486,15 +4486,16 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     clearTimeout(cloudTimer); cloudTimer=setTimeout(()=>cloudUploadAll(),650);
   };
   async function fetchCloud(){
-    const [clientsR,policiesR,motionsR,contestsR,covR,settingsR]=await Promise.all([
+    const [clientsR,policiesR,motionsR,contestsR,covR,settingsR,aliasesR]=await Promise.all([
       sb.from('clients').select('*').order('name'),
       sb.from('policies').select('*').order('inforce_date',{ascending:true,nullsFirst:false}),
       sb.from('policy_motions').select('*').order('motion_date',{ascending:true}),
       sb.from('contests').select('*').order('start_date',{ascending:false}),
       sb.from('coverage_analyses').select('*').order('created_at',{ascending:false}),
-      sb.from('app_settings').select('*')
+      sb.from('app_settings').select('*'),
+      sb.from('client_aliases').select('*')
     ]);
-    for(const r of [clientsR,policiesR,motionsR,contestsR,covR,settingsR])if(r.error)throw r.error;
+    for(const r of [clientsR,policiesR,motionsR,contestsR,covR,settingsR,aliasesR])if(r.error)throw r.error;
     return {clients:clientsR.data||[],policies:policiesR.data||[],motions:motionsR.data||[],contests:contestsR.data||[],coverage:covR.data||[],settings:settingsR.data||[],aliases:aliasesR.data||[]};
   }
   function cloudToLocal(data){
