@@ -1775,30 +1775,62 @@ function allProducts(){
 function normalizeHeader(v){return String(v||'').toLowerCase().replace(/[\s_\-\/()]+/g,'').replace(/[^\w\u4e00-\u9fff]/g,'')}
 function clientRecords(){
  const m=new Map();
- const makeKey=(c,fallback='')=>{const ic=String(c.ic||'').trim(),name=String(c.client||'').trim();return ic?'ic:'+ic.toLowerCase():name?'name:'+name.toLowerCase():fallback;};
+ const identityKey=c=>{const id=String(c._clientId||c._cloudId||'').trim();if(id)return 'id:'+id;const ic=String(c.ic||'').trim().toLowerCase();if(ic)return 'ic:'+ic;const name=String(c.client||'').trim().toLowerCase();return name?'name:'+name:'';};
  db.clients.forEach((c,i)=>{
-  const ic=String(c.ic||'').trim(),name=String(c.client||'').trim();
-  if(!ic&&!name)return;
-  const key=makeKey(c,'client-row:'+String(c.id||i));
-  if(!m.has(key))m.set(key,{...c,_clientKey:key});
-  else m.set(key,{...m.get(key),...c,_clientKey:key});
+  const key=identityKey(c)||'client-row:'+String(c.id||i);
+  const prior=m.get(key);
+  m.set(key,{...(prior||{}),...c,_clientKey:key});
  });
  db.cases.forEach((c,i)=>{
-  const ic=String(c.ic||'').trim(),name=String(c.client||'').trim();
-  const key=makeKey(c, 'case-row:'+String(c.id||i));
-  if(!m.has(key)){
-   m.set(key,{client:c.client||'',ic:c.ic||'',group:c.group||'',clientStatus:c.clientStatus||'',id:c.id||'',sourceCaseId:(!ic&&!name)?String(c.id||''):'',_clientKey:key});
-  }else{
-   const prior=m.get(key);
-   m.set(key,{...prior,group:prior.group||c.group||'',clientStatus:prior.clientStatus||c.clientStatus||'',_clientKey:key});
-  }
+  const key=identityKey(c)||'case-row:'+String(c.id||i);
+  const prior=m.get(key);
+  if(!prior)m.set(key,{client:c.client||'',ic:c.ic||'',group:c.group||'',clientStatus:c.clientStatus||'',_clientId:c._clientId||'',id:c.id||'',sourceCaseId:String(c.id||''),_clientKey:key});
+  else m.set(key,{...prior,client:prior.client||c.client||'',ic:prior.ic||c.ic||'',group:prior.group||c.group||'',clientStatus:prior.clientStatus||c.clientStatus||'',_clientId:prior._clientId||c._clientId||'',_clientKey:key});
  });
  return [...m.values()].sort((a,b)=>String(a.client||'').localeCompare(String(b.client||''),undefined,{sensitivity:'base'}));
 }
+function ensureClientIdentity(client){
+ if(!client)return null;
+ // _cloudId is the permanent UUID already used by the Supabase clients.id column.
+ if(!client._cloudId)client._cloudId=crypto.randomUUID();
+ return client._cloudId;
+}
+function clientAliasStore(){if(!Array.isArray(db.clientAliases))db.clientAliases=[];return db.clientAliases;}
+function normalizeClientLabel(v){return String(v||'').trim().toLocaleLowerCase().replace(/\s+/g,' ');}
+function addClientAlias(client,alias){
+ const label=String(alias||'').trim();if(!client||!label)return;
+ const id=ensureClientIdentity(client),key=normalizeClientLabel(label),current=normalizeClientLabel(client.client);
+ if(!key||key===current)return;
+ const rows=clientAliasStore();
+ if(!rows.some(a=>String(a.clientId||'')===String(id)&&normalizeClientLabel(a.alias)===key))rows.push({id:crypto.randomUUID(),clientId:id,alias:label,createdAt:new Date().toISOString()});
+}
+function findClientByAlias(label){const key=normalizeClientLabel(label);if(!key)return null;const alias=clientAliasStore().find(a=>normalizeClientLabel(a.alias)===key);return alias?db.clients.find(c=>String(c._cloudId||c._clientId||'')===String(alias.clientId||''))||null:null;}
+function mergeClientRecords(sourceId,targetId){
+ const source=db.clients.find(c=>String(c._cloudId||c._clientId||'')===String(sourceId));
+ const target=db.clients.find(c=>String(c._cloudId||c._clientId||'')===String(targetId));
+ if(!source||!target||source===target)throw new Error('Source or target client not found.');
+ ensureClientIdentity(source);ensureClientIdentity(target);
+ const sourceName=String(source.client||'').trim();if(sourceName)addClientAlias(target,sourceName);
+ (db.clientAliases||[]).forEach(a=>{if(String(a.clientId)===String(sourceId))a.clientId=String(targetId)});
+ (db.cases||[]).forEach(r=>{if(String(r._clientId||r._cloudId||'')===String(sourceId)){r._clientId=String(targetId);r.client=target.client||r.client;if(target.ic)r.ic=target.ic;}});
+ (db.coverageAnalyses||[]).forEach(r=>{if(String(r._clientId||r.clientId||'')===String(sourceId)){r._clientId=String(targetId);r.clientName=target.client||r.clientName;if(target.ic)r.clientIc=target.ic;}});
+ try{const ast=JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'{"logs":[]}');(ast.logs||[]).forEach(r=>{if(String(r._clientId||'')===String(sourceId)){r._clientId=String(targetId);r.clientName=target.client||r.clientName;}});localStorage.setItem(ACTIVITY_KEY,JSON.stringify(ast));}catch(e){console.warn('Activity client merge skipped',e);}
+ db.clients=db.clients.filter(c=>c!==source);localStorage.setItem(KEY,JSON.stringify(db));return target;
+}
+function findClientByIdentity(ref={}){
+ const id=String(ref._clientId||ref._cloudId||'').trim();
+ if(id){const byId=db.clients.find(x=>String(x._cloudId||x._clientId||'')===id);if(byId)return byId;}
+ const ic=String(ref.ic||'').trim().toLowerCase();
+ if(ic){const byIc=db.clients.find(x=>String(x.ic||'').trim().toLowerCase()===ic);if(byIc)return byIc;}
+ const name=String(ref.client||'').trim().toLowerCase();
+ if(name){const byName=db.clients.find(x=>normalizeClientLabel(x.client)===normalizeClientLabel(name));if(byName)return byName;const byAlias=findClientByAlias(name);if(byAlias)return byAlias;}
+ return null;
+}
 function upsertClient(c){
- if(!c.ic && !c.client)return;
- let key=c.ic||c.client, i=db.clients.findIndex(x=>(x.ic||x.client)===key);
- if(i>=0) db.clients[i]={...db.clients[i],...c}; else db.clients.push(c);
+ if(!String(c.client||'').trim()&&!String(c.ic||'').trim())return null;
+ const prior=findClientByIdentity(c);
+ if(prior){ensureClientIdentity(prior);if(c.client&&normalizeClientLabel(prior.client)!==normalizeClientLabel(c.client))addClientAlias(prior,prior.client);Object.assign(prior,c);return prior;}
+ const created={...c};ensureClientIdentity(created);db.clients.push(created);return created;
 }
 
 function save(){localStorage.setItem(KEY,JSON.stringify(db));render();if(window.cloudReady)window.cloudScheduleSync?.()}
@@ -2099,7 +2131,7 @@ function startCase(){modal('New Case',`<div class="menuGrid"><button class="menu
 function chooseNB(){modal('New Business',`<div class="menuGrid"><button class="menuBtn" onclick="caseForm('new')">New Client<span>Enter client details</span></button><button class="menuBtn" onclick="existingPicker('new')">Existing Client<span>Select an existing client</span></button></div>`)}
 function chooseTU(){existingPicker('endorsement')}
 function existingPicker(mode){
- let html=`<div class="field"><label>Client Name</label><input id="clientSearch" placeholder="Type existing client name" oninput="suggestClients('${mode}')"><div id="suggestions" class="list" style="margin-top:8px"></div></div>`;
+ let html=`<div class="field"><label>Full Name</label><input id="clientSearch" placeholder="Type existing client name" oninput="suggestClients('${mode}')"><div id="suggestions" class="list" style="margin-top:8px"></div></div>`;
  modal(mode==='endorsement'?'Endorsement · Select Client':'New Business · Existing Client',html)
 }
 function caseFormForClient(mode,index){
@@ -2190,9 +2222,9 @@ function caseForm(mode,ic='',reduceId='',clientName=''){
  if(base)c={...base};
  let productOptions=allProducts().map(p=>`<option ${c.product===p?'selected':''}>${p}</option>`).join('');
  let groupOptions=db.settings.groups.map(g=>`<option ${c.group===g?'selected':''}>${g}</option>`).join('');
- let clientBlock=mode==='new'?`<div class="field"><label>Client Name</label><input name="client" required></div><div class="field"><label>Client IC</label><input name="ic"></div>`:
+ let clientBlock=mode==='new'?`<div class="field"><label>Full Name</label><input name="client" required></div><div class="field"><label>Client IC</label><input name="ic"></div>`:
  (mode==='edit'&&!String(c.client||'').trim()&&!String(c.ic||'').trim()?`<div class="field full"><label>Assign this policy to an existing client</label><select id="repairClientPicker" onchange="fillRepairClient(this.value)" required><option value="">Select client…</option>${clientRecords().filter(r=>String(r.client||'').trim()).map((r,i)=>`<option value="${i}">${String(r.client||'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))}${r.ic?' · '+String(r.ic).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):''}</option>`).join('')}</select><input type="hidden" name="client" id="repairClientName" value=""><input type="hidden" name="ic" id="repairClientIC" value=""><div class="small">This policy has no client name or IC saved. Select the correct client to repair its association.</div></div>`:
- `<div class="field"><label>Client Name</label><input name="client" value="${String(c.client||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}" required></div><div class="field"><label>Client IC</label><input name="ic" value="${String(c.ic||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}"></div>`);
+ `<div class="field"><label>Full Name</label><input name="client" value="${String(c.client||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}" required></div><div class="field"><label>Client IC</label><input name="ic" value="${String(c.ic||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}"></div>`);
  let top=`${mode==='topup'?`<div class="field full"><label>Existing Product to Top Up</label><select name="parentPolicy">${existingProducts.map(p=>`<option>${p}</option>`).join('')}</select></div>`:''}`;
  let title=isReduce?'Reduce Policy':mode==='topup'?'Top Up':mode==='existing'?'New Business · Existing Client':'New Business · New Client';
  let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','ROP','ROP Revoke','Lapse','Revival','Cancellation','Surrender','Ceased'];
@@ -2249,20 +2281,22 @@ function saveCaseForm(e,mode,reduceId){
    o.commissionStart=calculatedCommencement(o.inforce)||o.inforce||'';
    o.parentId=existing.parentId||'';
  }
- upsertClient({client:o.client,ic:o.ic,group:o.group,clientStatus:o.status});
+ const linkedClient=upsertClient({...(existing?{_clientId:existing._clientId||existing._cloudId}:{}),client:o.client,ic:o.ic,group:o.group,clientStatus:o.status});
+ if(linkedClient){o._clientId=ensureClientIdentity(linkedClient);if(existing)existing._clientId=o._clientId;}
  // When a client name is corrected, propagate it to every policy/case for the same client
  // and to linked Activity history (caseId remains the stable relationship key).
  if(existing&&String(existing.client||'').trim()!==String(o.client||'').trim()){
-   const oldName=String(existing.client||'').trim(),oldIc=String(existing.ic||'').trim(),newName=String(o.client||'').trim();
+   const identity=String(o._clientId||existing._clientId||'').trim(),oldName=String(existing.client||'').trim(),oldIc=String(existing.ic||'').trim(),newName=String(o.client||'').trim();
+   const identityOwner=db.clients.find(row=>String(row._cloudId||row._clientId||'')===identity);if(identityOwner)addClientAlias(identityOwner,oldName);
    (db.cases||[]).forEach(row=>{
-     const sameClient=oldIc?String(row.ic||'').trim()===oldIc:String(row.client||'').trim()===oldName;
-     if(sameClient){row.client=newName;if(o.ic)row.ic=o.ic;}
+     const sameClient=identity?String(row._clientId||'')===identity:(oldIc?String(row.ic||'').trim()===oldIc:String(row.client||'').trim()===oldName);
+     if(sameClient){row.client=newName;if(o.ic)row.ic=o.ic;if(identity)row._clientId=identity;}
    });
    (db.clients||[]).forEach(row=>{
-     const sameClient=oldIc?String(row.ic||'').trim()===oldIc:String(row.client||'').trim()===oldName;
-     if(sameClient){row.client=newName;if(o.ic)row.ic=o.ic;}
+     const sameClient=identity?String(row._cloudId||row._clientId||'')===identity:(oldIc?String(row.ic||'').trim()===oldIc:String(row.client||'').trim()===oldName);
+     if(sameClient){row.client=newName;if(o.ic)row.ic=o.ic;if(identity)row._cloudId=identity;}
    });
-   try{const ast=JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'{"logs":[]}');(ast.logs||[]).forEach(log=>{if(String(log.caseId||'')===String(existing.id)|| (oldIc&&String(log.clientId||'')===oldIc)){log.clientName=newName;if(o.ic)log.clientId=o.ic;}});localStorage.setItem(ACTIVITY_KEY,JSON.stringify(ast));}catch(renameErr){console.warn('Activity rename propagation skipped',renameErr);}
+   try{const ast=JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'{"logs":[]}');(ast.logs||[]).forEach(log=>{if(String(log.caseId||'')===String(existing.id)||(identity&&String(log._clientId||'')===identity)){log.clientName=newName;if(o.ic)log.clientId=o.ic;if(identity)log._clientId=identity;}});localStorage.setItem(ACTIVITY_KEY,JSON.stringify(ast));}catch(renameErr){console.warn('Activity rename propagation skipped',renameErr);}
  }
  if(mode==='topup'&&!existing){
    let parent=db.cases.find(c=>(c.client===o.client&&c.product===o.parentPolicy)||c.product===o.parentPolicy);
@@ -2900,8 +2934,16 @@ function profile(ic,clientName='',caseId=''){
  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
  const benefitRows=(raw)=>{let b={};try{b=typeof raw==='string'?JSON.parse(raw||'{}'):(raw||{})}catch(e){b={}};const labels={b_Death___TPD:'Death / TPD',b_TMCC:'TMCC',b_43_CI:'43 CI',b_Acci_Death___TPD:'Acci Death / TPD',b_Acci_Medical_Reimbursement__per_case_:'Acci Medical Reimbursement (per case)'};let out=[];Object.keys(labels).forEach(k=>{if(b[k]!==undefined&&b[k]!==''&&b[k]!==null)out.push(`<div class="benefitSummaryRow"><span>${labels[k]}</span><strong>${money(Number(b[k])||0)}</strong></div>`)});if(b.med_plan||b.med_limit||b.med_whole||b.med_room||b.med_deduct){let d=[];if(b.med_plan)d.push(`<span>Plan <b>${esc(b.med_plan)}</b></span>`);if(b.med_limit)d.push(`<span>Annual Limit <b>${money(Number(b.med_limit)||0)}</b></span>`);if(b.med_whole)d.push(`<span>Whole Life Limit <b>${money(Number(b.med_whole)||0)}</b></span>`);if(b.med_room)d.push(`<span>Room &amp; Board <b>${money(Number(b.med_room)||0)}</b></span>`);if(b.med_deduct)d.push(`<span>Deductible / Med Saver <b>${money(Number(b.med_deduct)||0)}</b></span>`);out.push(`<div class="benefitSummaryRow benefitMedical"><span>Medical Card</span><div class="benefitDetailGrid">${d.join('')}</div></div>`)}if(b.payor==='on')out.push(`<div class="benefitSummaryRow"><span>Payor</span><strong>Included</strong></div>`);return out.length?`<div class="benefitSummary">${out.join('')}</div>`:`<div class="small" style="padding:10px 0">No benefit details recorded.</div>`};
  let productBlocks=products.map((p,i)=>{let rs=rows.filter(x=>normalizeProduct(x.product||x.type)===p),id='prod_'+i,active=rs.filter(x=>normalizeStatus(x.status)==='Inforce').length;return `<div class="profileProduct"><button class="profileProductHeader" onclick="document.getElementById('${id}').classList.toggle('hide')"><div><div class="profileProductName">${esc(p)}</div><div class="small">${rs.length} record${rs.length===1?'':'s'} · ${active} active</div></div><span class="chev">⌄</span></button><div id="${id}" class="hide profileProductBody">${rs.map(x=>`<div class="profilePolicy"><div class="row"><div><b>${esc(x.kind||'New Business')}</b><div class="small">${x.inforce?dateStr(x.inforce):'No inforce date'} · Commencement ${dateStr(cycleStart(x))} · ${x.payMode||'-'}${x.policyNumber?` · Policy ${esc(x.policyNumber)}`:''}</div></div><span class="pill ${normalizeStatus(x.status)==='Inforce'?'green':normalizeStatus(x.status)==='Lapse'||normalizeStatus(x.status)==='Surrender'||normalizeStatus(x.status)==='Ceased'?'red':'yellow'}">${esc(normalizeStatus(x.status))}</span></div><div class="policyMetrics"><span>Premium <b>${x.premium?money(x.premium):'-'}</b></span><span>TPC <b>${money(tpc(x))}</b></span></div><div class="section" style="margin:14px 0 6px">Coverage</div>${benefitRows(x.benefit)}${x.kind==='Existing Policy'?'<div class="small" style="margin-top:10px">Imported existing policy</div>':x.kind==='Reduce'?'<div class="small" style="margin-top:10px">Reduced within existing commission cycle</div>':''}<div class="actions" style="margin-top:12px;justify-content:flex-end"><button class="secondary" type="button" onclick="caseForm('edit','${String(x.ic||'').replace(/'/g, '&#39;')}','${String(x.id).replace(/'/g, '&#39;')}')">Edit Policy</button><button class="danger" type="button" onclick="deletePolicy('${String(x.ic||'').replace(/'/g, '&#39;')}','${String(x.id).replace(/'/g, '&#39;')}')">Delete Policy</button></div></div>`).join('')}</div></div>`}).join('');
- modal(c.client||'Unnamed Client',`<div class="small">${esc(c.ic||'-')} · Group ${esc(c.group||'-')}</div><div class="section">Client Details</div><div class="clientDetailCard"><div><span>Name</span><b>${esc(c.client||'Not recorded')}</b></div><div><span>IC</span><b>${esc(c.ic||'-')}</b></div><div><span>Records</span><b>${rows.length}</b></div></div><div class="section">Products</div><div class="profileProducts">${productBlocks||'<div class="empty">No product records.</div>'}</div><div class="section">Coverage Analysis</div><div class="card"><div class="small">Saved needs analyses for this client</div><button class="secondary" style="margin-top:8px" onclick="coveragePrefillForClient('${String(ic).replace(/'/g, '&#39;')}','${String(clientName).replace(/'/g, '&#39;')}')">Open Coverage Calculator</button><button class="secondary" style="margin-top:8px" onclick="profileCoverageHistory('${String(ic).replace(/'/g, '&#39;')}','${String(clientName).replace(/'/g, '&#39;')}')">Review Saved Analyses</button></div><div class="actions"><button class="secondary" onclick="caseForm('edit','${ic}','${c.id}')">Edit</button><button class="secondary" onclick="caseForm('reduce','${ic}','${c.id}')">Reduce</button><button class="danger" onclick="deleteClient('${String(ic).replace(/'/g, '&#39;')}','${String(clientName).replace(/'/g, '&#39;')}')">Delete</button></div>`,true)
+ modal(c.client||'Unnamed Client',`<div class="small">${esc(c.ic||'-')} · Group ${esc(c.group||'-')}</div><div class="section">Client Details</div><div class="clientDetailCard"><div><span>Full Name</span><b>${esc(c.client||'Not recorded')}</b></div><div><span>Previous Names</span><b>${(db.clientAliases||[]).filter(a=>String(a.clientId||'')===String(c._cloudId||c._clientId||'')).map(a=>esc(a.alias)).join(', ')||'-'}</b></div><div><span>IC</span><b>${esc(c.ic||'-')}</b></div><div><span>Records</span><b>${rows.length}</b></div></div><div class="section">Products</div><div class="profileProducts">${productBlocks||'<div class="empty">No product records.</div>'}</div><div class="section">Coverage Analysis</div><div class="card"><div class="small">Saved needs analyses for this client</div><button class="secondary" style="margin-top:8px" onclick="coveragePrefillForClient('${String(ic).replace(/'/g, '&#39;')}','${String(clientName).replace(/'/g, '&#39;')}')">Open Coverage Calculator</button><button class="secondary" style="margin-top:8px" onclick="profileCoverageHistory('${String(ic).replace(/'/g, '&#39;')}','${String(clientName).replace(/'/g, '&#39;')}')">Review Saved Analyses</button></div><div class="actions"><button class="secondary" onclick="caseForm('edit','${ic}','${c.id}')">Edit</button><button class="secondary" onclick="caseForm('reduce','${ic}','${c.id}')">Reduce</button><button class="danger" onclick="deleteClient('${String(ic).replace(/'/g, '&#39;')}','${String(clientName).replace(/'/g, '&#39;')}')">Delete</button><button class="secondary" onclick="openClientMerge('${String(c._cloudId||c._clientId||'')}')">Merge Duplicate</button></div>`,true)
 }
+function openClientMerge(targetId){
+ const target=db.clients.find(c=>String(c._cloudId||c._clientId||'')===String(targetId));if(!target){alert('Client identity not found.');return;}
+ ensureClientIdentity(target);
+ const options=db.clients.filter(c=>c!==target).map(c=>`<option value="${String(c._cloudId||c._clientId||'')}">${String(c.client||'Unnamed').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))} · ${String(c.ic||'No IC')}</option>`).join('');
+ if(!options){alert('No other client records to merge.');return;}
+ modal('Merge Duplicate Client',`<div class="small">Keep <b>${String(target.client||'Unnamed').replace(/[&<>]/g,'')}</b> as the main record. The selected duplicate’s linked records will be reassigned to it.</div><div class="field" style="margin-top:14px"><label>Duplicate record to merge into this client</label><select id="mergeSourceClient">${options}</select></div><div class="small">This is a permanent merge. Linked cloud records will be reassigned before the duplicate client is removed. All changes are performed together in one database transaction.</div><div class="actions"><button class="secondary" onclick="closeModal()">Cancel</button><button class="primary" onclick="confirmClientMerge('${String(targetId)}')">Merge Records</button></div>`,true);
+}
+async function confirmClientMerge(targetId){const sourceId=document.getElementById('mergeSourceClient')?.value;if(!sourceId||sourceId===targetId)return;const source=db.clients.find(c=>String(c._cloudId||c._clientId||'')===String(sourceId));const target=db.clients.find(c=>String(c._cloudId||c._clientId||'')===String(targetId));if(!source||!target){alert('Could not find both client records. Refresh and try again.');return;}const message=`Permanently merge ${source.client||'the duplicate'} into ${target.client||'the main client'}?\n\nPolicies, Pipeline Cases, Coverage Analyses and Aliases linked to the duplicate will be reassigned. The duplicate Client record will then be deleted. This cannot be undone.`;if(!confirm(message))return;try{if(window.cloudReady){const sb=window.salesTrackerSupabase;if(!sb||!window.salesTrackerUser?.id)throw new Error('Cloud session is not ready. Please sign in again.');const {data,error}=await sb.rpc('merge_client_records',{p_source_client_id:sourceId,p_target_client_id:targetId});if(error)throw error;if(!data?.success)throw new Error('The database did not confirm the merge.');mergeClientRecords(sourceId,targetId);await window.cloudScheduleSync?.();closeModal();render();toast(`Cloud merge complete · ${Number(data.policies_moved||0)} policies · ${Number(data.sales_cases_moved||0)} cases · ${Number(data.coverage_analyses_moved||0)} analyses`);}else{mergeClientRecords(sourceId,targetId);closeModal();render();toast('Local client records merged.');}}catch(e){console.error('Client merge failed',e);alert('Merge failed. No local records were changed unless the cloud transaction had already succeeded. Please refresh and check the client list before retrying.\n\n'+(e.message||'Unknown error'));}}
 function profileCoverageHistory(ic,clientName=''){
  const rows=(db.coverageAnalyses||[]).filter(x=>String(ic||'').trim()?String(x.clientIc||x.ic||'').trim()===String(ic).trim():String(x.clientName||x.client||'').trim()===String(clientName||'').trim()).sort((a,b)=>Number(b.createdAt||b.timestamp||0)-Number(a.createdAt||a.timestamp||0)||String(b.date).localeCompare(String(a.date)));
  modal('Saved Coverage Analyses',rows.length?`<div class="list">${rows.map(x=>savedAnalysisRow(x,'profile')).join('')}</div>`:'<div class="empty">No saved analysis for this client yet.</div>',true);
@@ -4199,7 +4241,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
   function json(v){return v===undefined||v===null?'':String(v)}
   function num(v){const n=Number(v);return Number.isFinite(n)?n:0}
   function caseToPolicy(c, clientMap) {
-    const cid=clientMap.get(String(c.ic||'').trim().toLowerCase()) || clientMap.get(String(c.client||'').trim().toLowerCase()) || null;
+    const cid=(c._clientId&&clientMap.get('id:'+String(c._clientId))) || clientMap.get(String(c.ic||'').trim().toLowerCase()) || clientMap.get(String(c.client||'').trim().toLowerCase()) || null;
     return {
       id:ensureCloudId(c), user_id:cloudUser.id, client_id:cid,
       policy_number:json(c.policyNumber||''), kind:json(c.kind||'New Business'), product:normalizeProduct(c.product||c.type||''),
@@ -4208,15 +4250,30 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       source:'sales-tracker-v1', source_reference:json(c.id||''), parent_policy_id:null, notes:json(c.notes||'')
     };
   }
+  function clientMatchKeys(c){
+    const keys=[];
+    const identity=String(c._clientId||c._cloudId||'').trim();
+    if(identity)keys.push('id:'+identity);
+    const ic=String(c.ic||'').trim().toLowerCase();
+    const name=String(c.client||'').trim().toLowerCase();
+    if(ic)keys.push(ic);
+    if(name)keys.push(name);
+    return [...new Set(keys)];
+  }
   function clientRows(){
-    const map=new Map();
-    (db.clients||[]).forEach(c=>{const key=String(c.ic||c.client||'').trim().toLowerCase();if(key)map.set(key,c)});
-    (db.cases||[]).forEach(c=>{const key=String(c.ic||c.client||'').trim().toLowerCase();if(key&&!map.has(key))map.set(key,{client:c.client,ic:c.ic,group:c.group||'',clientStatus:c.clientStatus||''})});
-    return [...map.values()];
+    const rows=[...(db.clients||[])];
+    (db.cases||[]).forEach(c=>{
+      const keys=clientMatchKeys(c);
+      const match=rows.find(r=>clientMatchKeys(r).some(k=>keys.includes(k)));
+      if(!match && keys.length)rows.push({client:c.client||'',ic:c.ic||'',group:c.group||'',clientStatus:c.clientStatus||''});
+      else if(match){match.client=match.client||c.client||'';match.ic=match.ic||c.ic||'';match.group=match.group||c.group||'';match.clientStatus=match.clientStatus||c.clientStatus||'';}
+    });
+    return rows;
   }
   async function upsertClients(){
     const rows=clientRows(); const map=new Map();
-    rows.forEach(c=>{ensureCloudId(c);const key=String(c.ic||c.client||'').trim().toLowerCase();if(key)map.set(key,c._cloudId)});
+    rows.forEach(c=>{ensureCloudId(c);clientMatchKeys(c).forEach(key=>map.set(key,c._cloudId));});
+    (db.cases||[]).forEach(c=>{const match=rows.find(r=>clientMatchKeys(r).some(k=>clientMatchKeys(c).includes(k)));if(match){c._clientId=match._cloudId;map.set('id:'+match._cloudId,match._cloudId);}});
     if(!rows.length)return map;
     const payload=rows.map(c=>({id:c._cloudId,user_id:cloudUser.id,name:json(c.client),ic:json(c.ic)||null,client_group:json(c.group),spouse_income:num(c.spouseIncome||c.spouse_income),monthly_income:num(c.monthlyIncome||c.monthly_income),children:c.children===''||c.children==null?0:num(c.children),youngest_child_age:c.youngestChildAge===''||c.youngestChildAge==null?null:num(c.youngestChildAge),notes:json(c.notes),updated_at:new Date().toISOString()}));
     const {error}=await sb.from('clients').upsert(payload,{onConflict:'id'}); if(error)throw error;
@@ -4273,9 +4330,30 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     const rows=(db.contests||[]).map(c=>{ensureCloudId(c);return{id:c._cloudId,user_id:cloudUser.id,name:json(c.name||''),start_date:c.start||null,end_date:c.end||null,metric:json(c.metric||'TPC'),product_restriction:c.type? [normalizeProduct(c.type)]:[],target:num(c.target),updated_at:new Date().toISOString()}});
     if(!rows.length)return; const {error}=await sb.from('contests').upsert(rows,{onConflict:'id'});if(error)throw error;
   }
-  async function upsertCoverage(){
-    const rows=(db.coverageAnalyses||[]).map(x=>{ensureCloudId(x);return{id:x._cloudId,user_id:cloudUser.id,client_id:null,client_name:json(x.clientName||x.client||''),client_ic:json(x.clientIc||x.ic||''),monthly_income:num(x.monthlyIncome),spouse_income:num(x.spouseIncome),children:num(x.children),youngest_child_age:x.youngestChildAge==null?null:num(x.youngestChildAge),savings:num(x.savings),mortgage:num(x.mortgage),loans:num(x.loans),education:num(x.education),existing_life:num(x.existingLife||x.life),existing_ci:num(x.existingCI||x.ci),existing_accidental_death:num(x.existingAccidentalDeath||x.accidentalDeath),existing_accidental_medical:num(x.existingAccidentalMedical||x.accidentalMedical),life_income_years:num(x.lifeIncomeYears||x.lifeYears||10),ci_income_years:num(x.ciIncomeYears||x.ciYears||3),life_need:num(x.lifeNeed),life_gap:num(x.lifeGap),ci_need:num(x.ciNeed),ci_gap:num(x.ciGap),emergency_target:num(x.emergencyTarget),emergency_gap:num(x.emergencyGap),savings_runway:num(x.savingsRunway),calculation:x||{},updated_at:new Date().toISOString()}});
+  async function upsertCoverage(clientMap){
+    const rows=(db.coverageAnalyses||[]).map(x=>{
+      ensureCloudId(x);
+      const clientIc=String(x.clientIc||x.ic||'').trim().toLowerCase();
+      const clientName=String(x.clientName||x.client||'').trim().toLowerCase();
+      const clientId=(x._clientId&&clientMap.get('id:'+String(x._clientId)))||(clientIc&&clientMap.get(clientIc))||(clientName&&clientMap.get(clientName))||null;
+      return{id:x._cloudId,user_id:cloudUser.id,client_id:clientId,client_name:json(x.clientName||x.client||''),client_ic:json(x.clientIc||x.ic||''),monthly_income:num(x.monthlyIncome),spouse_income:num(x.spouseIncome),children:num(x.children),youngest_child_age:x.youngestChildAge==null?null:num(x.youngestChildAge),savings:num(x.savings),mortgage:num(x.mortgage),loans:num(x.loans),education:num(x.education),existing_life:num(x.existingLife||x.life),existing_ci:num(x.existingCI||x.ci),existing_accidental_death:num(x.existingAccidentalDeath||x.accidentalDeath),existing_accidental_medical:num(x.existingAccidentalMedical||x.accidentalMedical),life_income_years:num(x.lifeIncomeYears||x.lifeYears||10),ci_income_years:num(x.ciIncomeYears||x.ciYears||3),life_need:num(x.lifeNeed),life_gap:num(x.lifeGap),ci_need:num(x.ciNeed),ci_gap:num(x.ciGap),emergency_target:num(x.emergencyTarget),emergency_gap:num(x.emergencyGap),savings_runway:num(x.savingsRunway),calculation:x||{},updated_at:new Date().toISOString()};
+    });
     if(!rows.length)return; const {error}=await sb.from('coverage_analyses').upsert(rows,{onConflict:'id'});if(error)throw error;
+  }
+  async function upsertClientAliases(){
+    const aliases=clientAliasStore();
+    if(!aliases.length)return;
+    const clientList=clientRows();
+    const clientIdMap=new Map();
+    clientList.forEach(c=>{const id=String(c._cloudId||c._clientId||'');if(id)clientIdMap.set(id,id);});
+    const rows=aliases.map(a=>{
+      const clientId=clientIdMap.get(String(a.clientId||''));
+      if(!clientId)return null;
+      return {user_id:cloudUser.id,client_id:clientId,alias:String(a.alias||'').trim()};
+    }).filter(r=>r&&r.alias);
+    if(!rows.length)return;
+    const {error}=await sb.from('client_aliases').upsert(rows,{onConflict:'user_id,client_id,normalized_alias',ignoreDuplicates:true});
+    if(error)throw error;
   }
   async function upsertSettings(){
     // The contests table only stores the standard fields. Preserve custom cumulative
@@ -4395,7 +4473,8 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       await upsertPolicies(clientMap);
       await upsertPolicyMotions();
       await upsertContests();
-      await upsertCoverage();
+      await upsertCoverage(clientMap);
+      await upsertClientAliases();
       await upsertSettings();
       localStorage.setItem(KEY,JSON.stringify(db));
       cloudSyncStatus('Synced','');
@@ -4416,12 +4495,12 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       sb.from('app_settings').select('*')
     ]);
     for(const r of [clientsR,policiesR,motionsR,contestsR,covR,settingsR])if(r.error)throw r.error;
-    return {clients:clientsR.data||[],policies:policiesR.data||[],motions:motionsR.data||[],contests:contestsR.data||[],coverage:covR.data||[],settings:settingsR.data||[]};
+    return {clients:clientsR.data||[],policies:policiesR.data||[],motions:motionsR.data||[],contests:contestsR.data||[],coverage:covR.data||[],settings:settingsR.data||[],aliases:aliasesR.data||[]};
   }
   function cloudToLocal(data){
     const clients=(data.clients||[]).map(r=>({_cloudId:r.id,client:r.name||'',ic:r.ic||'',group:r.client_group||'',spouseIncome:num(r.spouse_income),monthlyIncome:num(r.monthly_income),children:num(r.children),youngestChildAge:r.youngest_child_age==null?'':num(r.youngest_child_age),notes:r.notes||''}));
     const clientById=new Map(clients.map(c=>[c._cloudId,c]));
-    const policies=(data.policies||[]).map(r=>{const c=clientById.get(r.client_id);return{_cloudId:r.id,id:r.source_reference||r.id,client:c?.client||'',ic:c?.ic||'',group:c?.group||'',policyNumber:r.policy_number||'',kind:r.kind||'Existing Policy',product:normalizeProduct(r.product||''),benefit:typeof r.benefit==='string'?r.benefit:JSON.stringify(r.benefit||{}),inforce:r.inforce_date||'',status:normalizeStatus(r.status||''),payMode:r.payment_mode||'',premium:num(r.premium),term:r.payment_term==null?'':String(r.payment_term),tpc:num(r.tpc),commissionStart:r.inforce_date||'',parentId:'',notes:r.notes||''}});
+    const policies=(data.policies||[]).map(r=>{const c=clientById.get(r.client_id);return{_cloudId:r.id,_clientId:r.client_id||'',id:r.source_reference||r.id,client:c?.client||'',ic:c?.ic||'',group:c?.group||'',policyNumber:r.policy_number||'',kind:r.kind||'Existing Policy',product:normalizeProduct(r.product||''),benefit:typeof r.benefit==='string'?r.benefit:JSON.stringify(r.benefit||{}),inforce:r.inforce_date||'',status:normalizeStatus(r.status||''),payMode:r.payment_mode||'',premium:num(r.premium),term:r.payment_term==null?'':String(r.payment_term),tpc:num(r.tpc),commissionStart:r.inforce_date||'',parentId:'',notes:r.notes||''}});
     const byCloudId=new Map(policies.map(p=>[p._cloudId,p]));
     (data.policies||[]).forEach(r=>{const p=byCloudId.get(r.id);if(p&&r.parent_policy_id){const parent=byCloudId.get(r.parent_policy_id);if(parent)p.parentId=String(parent.id)}});
     const metadataRow=(data.settings||[]).find(x=>x.setting_key==='contestMetadata');
@@ -4436,12 +4515,13 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       const savedTiers=Array.isArray(meta.rewardTiers)?meta.rewardTiers:(Array.isArray(local.rewardTiers)?local.rewardTiers:[]);
       return {_cloudId:r.id,name:r.name||'',start:r.start_date||'',end:r.end_date||'',metric:r.metric||'TPC',type:Array.isArray(r.product_restriction)&&r.product_restriction.length?normalizeProduct(r.product_restriction[0]):'Any',target:num(r.target),trackingMode,rewardTiers:savedTiers};
     });
-    const coverage=(data.coverage||[]).map(r=>{const x=r.calculation&&typeof r.calculation==='object'?{...r.calculation}:{ };x._cloudId=r.id;x.id=r.id;x.createdAt=r.created_at?new Date(r.created_at).getTime():Date.now();x.clientName=r.client_name||x.clientName||'';x.clientIc=r.client_ic||x.clientIc||'';x.monthlyIncome=num(r.monthly_income);x.spouseIncome=num(r.spouse_income);x.children=num(r.children);x.youngestChildAge=r.youngest_child_age;x.savings=num(r.savings);return x;});
+    const coverage=(data.coverage||[]).map(r=>{const x=r.calculation&&typeof r.calculation==='object'?{...r.calculation}:{ };x._cloudId=r.id;x.id=r.id;x._clientId=r.client_id||'';x.createdAt=r.created_at?new Date(r.created_at).getTime():Date.now();x.clientName=r.client_name||x.clientName||'';x.clientIc=r.client_ic||x.clientIc||'';x.monthlyIncome=num(r.monthly_income);x.spouseIncome=num(r.spouse_income);x.children=num(r.children);x.youngestChildAge=r.youngest_child_age;x.savings=num(r.savings);return x;});
     const settingsRow=(data.settings||[]).find(x=>x.setting_key==='settings');
     const behaviourRow=(data.settings||[]).find(x=>x.setting_key==='behaviourTracker');
     const activitiesRow=(data.settings||[]).find(x=>x.setting_key==='dailyActivities');
     const langRow=(data.settings||[]).find(x=>x.setting_key==='language');
     const notifRow=(data.settings||[]).find(x=>x.setting_key==='notifications');
+    const legacyAliasesRow=(data.settings||[]).find(x=>x.setting_key==='clientAliases');
     const policySourceByCloudId=new Map((data.policies||[]).map(r=>[String(r.id),String(r.source_reference||r.id)]));
     const cloudMotionRows=Array.isArray(data.motions)?data.motions:[];
     const preserveLocalMotions=cloudMotionRows.length===0&&Array.isArray(db.salesMotions)&&db.salesMotions.length>0;
@@ -4455,6 +4535,8 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       createdAt:r.created_at||'',reversedBy:r.reversed_by_source_id||''
     }));
     db.clients=clients;db.cases=policies;db.salesMotions=salesMotions;db.contests=contests;db.coverageAnalyses=coverage;
+    db.clientAliases=(data.aliases||[]).map(a=>({id:a.id,clientId:a.client_id,alias:a.alias,createdAt:a.created_at}));
+    if(!db.clientAliases.length&&Array.isArray(legacyAliasesRow?.setting_value))db.clientAliases=legacyAliasesRow.setting_value;
     if(settingsRow?.setting_value)db.settings={...structuredClone(defaults),...settingsRow.setting_value};
     if(behaviourRow?.setting_value)db.behaviourTracker=behaviourRow.setting_value;
     if(activitiesRow?.setting_value&&Array.isArray(activitiesRow.setting_value.logs)){localStorage.setItem(ACTIVITY_KEY,JSON.stringify(activitiesRow.setting_value));}
@@ -4492,13 +4574,16 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       const data=await fetchCloud();
       const hadLocalMotions=Array.isArray(db.salesMotions)&&db.salesMotions.length>0;
       const hadLocalActivities=(activityStore().logs||[]).length>0;
+      const hadLocalAliases=Array.isArray(db.clientAliases)&&db.clientAliases.length>0;
       const cloudHasActivities=(data.settings||[]).some(x=>x.setting_key==='dailyActivities');
+      const cloudHasAliases=(data.aliases||[]).length>0;
       cloudToLocal(data);
       // If Cloud has no Motion rows but this device has recoverable records,
       // preserve them locally and upload them instead of silently erasing them.
       if((data.motions||[]).length===0&&hadLocalMotions) await upsertPolicyMotions();
       // One-time migration: preserve local activity history when the cloud key does not exist yet.
       if(!cloudHasActivities&&hadLocalActivities) await upsertSettings();
+      if(!cloudHasAliases&&hadLocalAliases) await upsertClientAliases();
       render();
     }
     finally{cloudLoading=false;}
