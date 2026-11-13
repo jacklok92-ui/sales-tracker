@@ -1980,10 +1980,10 @@ function activityClientRows(){
  const map=new Map();
  const add=(row,kind)=>{if(!row||(!String(row.client||'').trim()&&!String(row.ic||'').trim()))return;const key=activityClientKey(row);if(!key)return;let x=map.get(key);if(!x){x={key,client:row.client||'Unnamed client',ic:row.ic||'',_clientId:row._cloudId||row._clientId||'',sources:[],policies:[],pipelines:[]};map.set(key,x)}else{if((!x.client||x.client==='Unnamed client')&&row.client)x.client=row.client;if(!x.ic&&row.ic)x.ic=row.ic;if(!x._clientId)x._clientId=row._cloudId||row._clientId||''}if(!x.sources.includes(row))x.sources.push(row);if(kind==='policy'&&!x.policies.includes(row))x.policies.push(row);if(kind==='pipeline'&&!x.pipelines.includes(row))x.pipelines.push(row)};
  (db.clients||[]).forEach(x=>add(x,'client'));
- (db.cases||[]).forEach(c=>{const status=normalizeStatus(c.status);if(c.kind==='Existing Policy'||status==='Inforce')add(c,'policy');else if(['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'].includes(status))add(c,'pipeline');else add(c,'client')});
+ (db.cases||[]).forEach(c=>{const status=normalizeStatus(c.status);if(c.kind==='Existing Policy'||status==='Inforce')add(c,'policy');else if(['Standby','To Approach','To Meet Up','To Follow Up','To Submit','To Approve'].includes(status))add(c,'pipeline');else add(c,'client')});
  return [...map.values()].sort((a,b)=>String(a.client).localeCompare(String(b.client),undefined,{sensitivity:'base'}));
 }
-function activityPipelineCases(){return (db.cases||[]).filter(c=>c.kind!=='Existing Policy'&&['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'].includes(normalizeStatus(c.status)))}
+function activityPipelineCases(){return (db.cases||[]).filter(c=>c.kind!=='Existing Policy'&&['Standby','To Approach','To Meet Up','To Follow Up','To Submit','To Approve'].includes(normalizeStatus(c.status)))}
 function activityCaseOptions(clientKey='',selected=''){
  const client=activityClientRows().find(x=>x.key===clientKey);const rows=client?client.pipelines.filter(c=>activityClientKey(c)===clientKey):[];
  return '<option value="">No Pipeline link</option>'+rows.map(c=>`<option value="${activityEsc(c.id)}" ${String(c.id)===String(selected)?'selected':''}>${activityEsc(c.product||c.type||'New business')} · ${activityEsc(normalizeStatus(c.status))}</option>`).join('');
@@ -2247,7 +2247,7 @@ function caseForm(mode,ic='',reduceId='',clientName=''){
  `<div class="field"><label>Full Name</label><input name="client" value="${String(c.client||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}" required></div><div class="field"><label>Client IC</label><input name="ic" value="${String(c.ic||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}"></div>`);
  let top=`${mode==='topup'?`<div class="field full"><label>Existing Product to Top Up</label><select name="parentPolicy">${existingProducts.map(p=>`<option>${p}</option>`).join('')}</select></div>`:''}`;
  let title=isReduce?'Reduce Policy':mode==='topup'?'Top Up':mode==='existing'?'New Business · Existing Client':'New Business · New Client';
- let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','ROP','ROP Revoke','Lapse','Revival','Cancellation','Surrender','Ceased'];
+ let statusOptions=['Standby','To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','ROP','ROP Revoke','Lapse','Revival','Cancellation','Surrender','Ceased'];
  let benefits=JSON.parse(c.benefit||'{}');
  let currentStatus=normalizeStatus(c.policyMotionStatus||c.status||'To Approach');
  let inforceVisible=['Inforce','ROP','ROP Revoke','Revival','Cancellation'].includes(currentStatus);
@@ -2462,7 +2462,7 @@ function breakdown(title,rows,mode='tpc'){
  modal(title+' Breakdown',`<div class="small" style="margin-bottom:12px">${rows.length} record${rows.length===1?'':'s'} · ${money(total)}</div><div class="list">${rows.map(c=>`<div class="item"><div class="row"><div><b>${c.client||'-'}</b><div class="small">${c.product||c.type||'-'} · ${c.kind||'New Business'}</div><div class="small">${dateStr(c.inforce)} · ${c.policyNumber||'-'}</div></div><b>${money(mode==='income'?monthlyComm(c,monthKey()+'-01'):tpc(c))}</b></div></div>`).join('')||'<div class="empty">No records.</div>'}</div>`,true)
 }
 function pipeline(){
- let statuses=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce'];
+ let statuses=['Standby','To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce'];
  document.getElementById('pipeline').innerHTML=`<div class="section">Sales Pipeline</div><div class="list">${statuses.map((st,i)=>{
    let currentYear=String(new Date().getFullYear()); let x=db.cases.filter(c=>normalizeStatus(c.status)===st&&(st==='Inforce'?String(c.inforce||'').startsWith(currentYear):c.kind!=='Existing Policy')),id='stage'+i;
    return `<div class="card">
@@ -3726,7 +3726,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
    const dayMotions=(db.salesMotions||[]).filter(m=>String(m.date||'')===today);
    const logs=((db.behaviourTracker&&db.behaviourTracker.logs)||[]).filter(x=>x.date===today);
    const checkin=(db.dailyReportCheckins||{})[today]||{};
-   const statuses=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'];
+   const statuses=['Standby','To Approach','To Meet Up','To Follow Up','To Submit','To Approve'];
    const statusOf=c=>normalizeStatus(c.status);
    const caseStageHistory=db.caseStageHistory||[];
    const historyToday=caseStageHistory.filter(h=>h.changeDate===today);
@@ -3771,11 +3771,11 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
  };
  window.downloadDailyReport=function downloadDailyReport(format){const {report,markdown}=buildDailyReport();const content=format==='json'?JSON.stringify(report,null,2):markdown,mime=format==='json'?'application/json;charset=utf-8':'text/markdown;charset=utf-8',blob=new Blob([content],{type:mime}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`CRM_Daily_Report_${report.reportDate}.${format==='json'?'json':'md'}`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Daily report downloaded');};
  window.copyDailyReport=async function copyDailyReport(){const {markdown}=buildDailyReport();try{await navigator.clipboard.writeText(markdown);toast('Report copied')}catch(e){modal('Copy report',`<textarea style="width:100%;min-height:240px">${markdown.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</textarea><div class="small">Select and copy the report text.</div>`,true)}};
- function pipelineStageClass(status){const s=normalizeStatus(status);return ({'To Approach':'approach','To Meet Up':'meet','To Follow Up':'follow','To Submit':'submit','To Approve':'approve'})[s]||'neutral'}
+ function pipelineStageClass(status){const s=normalizeStatus(status);return ({'Standby':'standby','To Approach':'approach','To Meet Up':'meet','To Follow Up':'follow','To Submit':'submit','To Approve':'approve'})[s]||'neutral'}
  function iosPipeline(){
    // Pipeline only contains the five actionable prospect stages. Inforce and
    // post-sale statuses remain available in Portfolio / policy records, not here.
-   const pipelineStatuses=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'];
+   const pipelineStatuses=['Standby','To Approach','To Meet Up','To Follow Up','To Submit','To Approve'];
    const stages=['All',...pipelineStatuses];
    let activeStage=window.iosPipeStage||'All';
    if(activeStage!=='All'&&!pipelineStatuses.includes(activeStage)) activeStage='All';
