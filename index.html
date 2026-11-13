@@ -1962,10 +1962,23 @@ function activityStore(){try{const st=JSON.parse(localStorage.getItem(ACTIVITY_K
 function saveActivityStore(x){localStorage.setItem(ACTIVITY_KEY,JSON.stringify(x))}
 function activityDate(){return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kuala_Lumpur'})}
 function activityEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function activityClientKey(row){const id=String(row?._cloudId||row?._clientId||'').trim();if(id)return 'id:'+id;const ic=String(row?.ic||'').trim().toLowerCase();if(ic){const linked=(db.clients||[]).find(c=>String(c.ic||'').trim().toLowerCase()===ic&&String(c._cloudId||c._clientId||'').trim());if(linked)return 'id:'+String(linked._cloudId||linked._clientId);return 'ic:'+ic;}const name=normalizeClientLabel(row?.client||'');const linked=(db.clients||[]).find(c=>normalizeClientLabel(c.client)===name&&String(c._cloudId||c._clientId||'').trim());if(linked)return 'id:'+String(linked._cloudId||linked._clientId);return 'name:'+name;}
+function activityClientKey(row){
+ const ic=String(row?.ic||'').trim().toLowerCase();
+ const name=normalizeClientLabel(row?.client||'');
+ // Resolve policy/pipeline rows to the master client identity before considering
+ // their own record IDs. A policy/case ID is not a person ID.
+ const masters=(db.clients||[]).filter(c=>c&&String(c.client||'').trim());
+ let linked=ic?masters.find(c=>String(c.ic||'').trim().toLowerCase()===ic):null;
+ if(!linked&&name){const sameName=masters.filter(c=>normalizeClientLabel(c.client)===name);if(sameName.length===1)linked=sameName[0];else if(sameName.length>1&&!ic){const withoutIC=sameName.filter(c=>!String(c.ic||'').trim());if(withoutIC.length===1)linked=withoutIC[0];}}
+ const canonical=linked||row;
+ const canonicalIC=String(canonical?.ic||ic||'').trim().toLowerCase();
+ if(canonicalIC)return 'ic:'+canonicalIC;
+ const canonicalName=normalizeClientLabel(canonical?.client||row?.client||'');
+ return canonicalName?'name:'+canonicalName:'';
+}
 function activityClientRows(){
  const map=new Map();
- const add=(row,kind)=>{if(!row||(!String(row.client||'').trim()&&!String(row.ic||'').trim()))return;const key=activityClientKey(row);if(!key||key==='name:')return;let x=map.get(key);if(!x){x={key,client:row.client||'Unnamed client',ic:row.ic||'',_clientId:row._cloudId||row._clientId||'',sources:[],policies:[],pipelines:[]};map.set(key,x)}else{if(!x.client||x.client==='Unnamed client')x.client=row.client||x.client;if(!x.ic)x.ic=row.ic||'';if(!x._clientId)x._clientId=row._cloudId||row._clientId||''}x.sources.push(row);if(kind==='policy')x.policies.push(row);if(kind==='pipeline')x.pipelines.push(row)};
+ const add=(row,kind)=>{if(!row||(!String(row.client||'').trim()&&!String(row.ic||'').trim()))return;const key=activityClientKey(row);if(!key)return;let x=map.get(key);if(!x){x={key,client:row.client||'Unnamed client',ic:row.ic||'',_clientId:row._cloudId||row._clientId||'',sources:[],policies:[],pipelines:[]};map.set(key,x)}else{if((!x.client||x.client==='Unnamed client')&&row.client)x.client=row.client;if(!x.ic&&row.ic)x.ic=row.ic;if(!x._clientId)x._clientId=row._cloudId||row._clientId||''}if(!x.sources.includes(row))x.sources.push(row);if(kind==='policy'&&!x.policies.includes(row))x.policies.push(row);if(kind==='pipeline'&&!x.pipelines.includes(row))x.pipelines.push(row)};
  (db.clients||[]).forEach(x=>add(x,'client'));
  (db.cases||[]).forEach(c=>{const status=normalizeStatus(c.status);if(c.kind==='Existing Policy'||status==='Inforce')add(c,'policy');else if(['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'].includes(status))add(c,'pipeline');else add(c,'client')});
  return [...map.values()].sort((a,b)=>String(a.client).localeCompare(String(b.client),undefined,{sensitivity:'base'}));
