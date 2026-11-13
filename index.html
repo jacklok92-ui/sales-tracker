@@ -1954,40 +1954,43 @@ function monthlyComm(c,date){
  let y=Math.ceil(m/12), yearly=tpc(c)*db.settings.rates[y-1]*factor(c);
  return c.payMode==='monthly'?yearly/12:c.payMode==='quarterly'?(m%3===1?yearly/4:0):c.payMode==='halfyearly'?(m%6===1?yearly/2:0):(m===((y-1)*12+1)?yearly:0);
 }
-// Daily Activities module — Pipeline-linked workflow
+// Daily Activities — client-first workflow (a client can have multiple policies and pipeline opportunities)
 const ACTIVITY_KEY='salesTrackerDailyActivitiesV1';
-function activityStore(){try{const st=JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'{"logs":[]}');let changed=false;(st.logs||[]).forEach(x=>{if(x.kind==='detail'&&!x.caseId&&x.clientId){const matches=(db.cases||[]).filter(c=>String(c.ic||c.client||'')===String(x.clientId));if(matches.length===1){x.caseId=String(matches[0].id);x.clientName=matches[0].client;changed=true}}if(x.caseId){const linked=(db.cases||[]).find(c=>String(c.id)===String(x.caseId));if(linked){if(x.clientName!==linked.client){x.clientName=linked.client;changed=true}if(x.appointmentDate&&(!linked.appointmentDate||String(x.appointmentDate)>String(linked.appointmentDate))){linked.appointmentDate=String(x.appointmentDate);changed=true}const currentClientId=String(linked.ic||linked.client||'');if(String(x.clientId||'')!==currentClientId){x.clientId=currentClientId;changed=true}}}});if(changed){localStorage.setItem(ACTIVITY_KEY,JSON.stringify(st));localStorage.setItem(KEY,JSON.stringify(db));}return st}catch(e){return {logs:[]}}}
+const ACTIVITY_TYPES=['Build Rappo / Catch Up','Policy Review','Policy Servicing','Deliver policy','Approach','Appointment','Follow Up','Ask For Referral','Application / Proposal'];
+const ACTIVITY_RESULTS=['Appointment Book','Follow Up needed','Not interested','Interested','Closed case','Rappo +','Submitted','Pending Document','Get Referral'];
+function activityStore(){try{const st=JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'{"logs":[]}');if(!Array.isArray(st.logs))st.logs=[];let changed=false;st.logs.forEach(x=>{if(!x.clientKey){let linked=x.caseId?(db.cases||[]).find(c=>String(c.id)===String(x.caseId)):null;let client=linked?activityClientRows().find(c=>c.key===activityClientKey(linked)):activityClientRows().find(c=>(x.clientId&&String(c.ic||'').trim()===String(x.clientId).trim())||normalizeClientLabel(c.client)===normalizeClientLabel(x.clientName));if(client){x.clientKey=client.key;x.clientName=x.clientName||client.client;x._clientId=x._clientId||client._clientId||'';changed=true}}});if(changed)localStorage.setItem(ACTIVITY_KEY,JSON.stringify(st));return st}catch(e){return {logs:[]}}}
 function saveActivityStore(x){localStorage.setItem(ACTIVITY_KEY,JSON.stringify(x))}
 function activityDate(){return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kuala_Lumpur'})}
 function activityEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function activityPipelineCases(){return (db.cases||[]).filter(c=>c.kind!=='Existing Policy'&&['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Standby'].includes(normalizeStatus(c.status)))}
-function activityCaseOptions(selected=''){
- const cases=activityPipelineCases().slice().sort((a,b)=>String(a.client||'').localeCompare(String(b.client||'')));
- return '<option value="">General activity / no Pipeline link</option>'+cases.map(c=>`<option value="${activityEsc(c.id)}" ${String(c.id)===String(selected)?'selected':''}>${activityEsc(c.client||'Unnamed client')} · ${activityEsc(normalizeStatus(c.status))}${c.ic?' · '+activityEsc(c.ic):''}</option>`).join('');
+function activityClientKey(row){const id=String(row?._cloudId||row?._clientId||'').trim();if(id)return 'id:'+id;const ic=String(row?.ic||'').trim().toLowerCase();if(ic){const linked=(db.clients||[]).find(c=>String(c.ic||'').trim().toLowerCase()===ic&&String(c._cloudId||c._clientId||'').trim());if(linked)return 'id:'+String(linked._cloudId||linked._clientId);return 'ic:'+ic;}const name=normalizeClientLabel(row?.client||'');const linked=(db.clients||[]).find(c=>normalizeClientLabel(c.client)===name&&String(c._cloudId||c._clientId||'').trim());if(linked)return 'id:'+String(linked._cloudId||linked._clientId);return 'name:'+name;}
+function activityClientRows(){
+ const map=new Map();
+ const add=(row,kind)=>{if(!row||(!String(row.client||'').trim()&&!String(row.ic||'').trim()))return;const key=activityClientKey(row);if(!key||key==='name:')return;let x=map.get(key);if(!x){x={key,client:row.client||'Unnamed client',ic:row.ic||'',_clientId:row._cloudId||row._clientId||'',sources:[],policies:[],pipelines:[]};map.set(key,x)}else{if(!x.client||x.client==='Unnamed client')x.client=row.client||x.client;if(!x.ic)x.ic=row.ic||'';if(!x._clientId)x._clientId=row._cloudId||row._clientId||''}x.sources.push(row);if(kind==='policy')x.policies.push(row);if(kind==='pipeline')x.pipelines.push(row)};
+ (db.clients||[]).forEach(x=>add(x,'client'));
+ (db.cases||[]).forEach(c=>{const status=normalizeStatus(c.status);if(c.kind==='Existing Policy'||status==='Inforce')add(c,'policy');else if(['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'].includes(status))add(c,'pipeline');else add(c,'client')});
+ return [...map.values()].sort((a,b)=>String(a.client).localeCompare(String(b.client),undefined,{sensitivity:'base'}));
+}
+function activityPipelineCases(){return (db.cases||[]).filter(c=>c.kind!=='Existing Policy'&&['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'].includes(normalizeStatus(c.status)))}
+function activityCaseOptions(clientKey='',selected=''){
+ const client=activityClientRows().find(x=>x.key===clientKey);const rows=client?client.pipelines.filter(c=>activityClientKey(c)===clientKey):[];
+ return '<option value="">No Pipeline link</option>'+rows.map(c=>`<option value="${activityEsc(c.id)}" ${String(c.id)===String(selected)?'selected':''}>${activityEsc(c.product||c.type||'New business')} · ${activityEsc(normalizeStatus(c.status))}</option>`).join('');
+}
+function activityPolicyOptions(clientKey='',selected=''){
+ const client=activityClientRows().find(x=>x.key===clientKey);const rows=client?client.policies.filter(c=>activityClientKey(c)===clientKey):[];
+ return '<option value="">No specific policy</option>'+rows.map(c=>`<option value="${activityEsc(c.id)}" ${String(c.id)===String(selected)?'selected':''}>${activityEsc(c.product||c.type||'Policy')} · ${activityEsc(c.policyNo||c.policyNumber||c.status||'Inforce')}</option>`).join('');
+}
+function activityClientOptions(selected=''){
+ return '<option value="">Choose a client…</option>'+activityClientRows().map(c=>`<option value="${activityEsc(c.key)}" ${c.key===selected?'selected':''}>${activityEsc(c.client)}${c.ic?' · '+activityEsc(c.ic):''}${c.policies.length?' · Existing client':''}${c.pipelines.length?' · Pipeline':''}</option>`).join('');
 }
 function activityFilterClientSelect(input){
- const select=document.getElementById('activityPipelineClientSelect'),results=document.getElementById('activityPipelineClientSearchResults');if(!select)return;
- const norm=v=>String(v??'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();
- const query=norm(input.value),selected=String(select.value||'');
- const rows=(db.cases||[]).filter(c=>c&&c.kind!=='Existing Policy'&&['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Standby'].includes(normalizeStatus(c.status)));
- const matches=rows.filter(c=>!query||[c.client,c.ic,c.product,c.type,c.status].some(v=>norm(v).includes(query))).sort((a,b)=>String(a.client||'').localeCompare(String(b.client||'')));
- const selectedCase=rows.find(c=>String(c.id)===selected);
- const ordered=selectedCase?[selectedCase,...matches.filter(c=>String(c.id)!==selected)]:matches;
- select.innerHTML='<option value="">Choose a Pipeline client…</option>'+ordered.map(c=>`<option value="${activityEsc(c.id)}">${activityEsc(c.client||'Unnamed client')} · ${activityEsc(normalizeStatus(c.status))}${c.ic?' · '+activityEsc(c.ic):''}</option>`).join('');
- if(selectedCase)select.value=selected;
- if(results){
-   if(!query){results.style.display='none';results.innerHTML='';return}
-   results.style.display='block';
-   results.innerHTML=matches.length?matches.slice(0,12).map(c=>`<button type="button" onclick="activityChooseSearchClient('${activityEsc(c.id)}')" style="display:block;width:100%;text-align:left;padding:12px 14px;border:0;border-bottom:1px solid #edf0f5;background:#fff;color:#172033;font:inherit"><strong>${activityEsc(c.client||'Unnamed client')}</strong><span style="display:block;font-size:12px;color:#778096;margin-top:2px">${activityEsc(normalizeStatus(c.status))}${c.ic?' · '+activityEsc(c.ic):''}</span></button>`).join(''):'<div style="padding:14px;color:#778096">No matching Pipeline client</div>';
- }
+ const select=document.getElementById('activityClientSelect'),results=document.getElementById('activityClientSearchResults');if(!select)return;
+ const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();const query=norm(input.value);
+ const matches=activityClientRows().filter(c=>!query||[c.client,c.ic].some(v=>norm(v).includes(query)));
+ select.innerHTML='<option value="">Choose a client…</option>'+matches.map(c=>`<option value="${activityEsc(c.key)}">${activityEsc(c.client)}${c.ic?' · '+activityEsc(c.ic):''}${c.policies.length?' · Existing client':''}${c.pipelines.length?' · Pipeline':''}</option>`).join('');
+ if(results){results.style.display=query?'block':'none';results.innerHTML=query?(matches.length?matches.slice(0,15).map(c=>`<button type="button" onclick="activityChooseSearchClient('${activityEsc(c.key)}')" style="display:block;width:100%;text-align:left;padding:12px 14px;border:0;border-bottom:1px solid #edf0f5;background:#fff;color:#172033;font:inherit"><strong>${activityEsc(c.client)}</strong><span style="display:block;font-size:12px;color:#778096;margin-top:2px">${activityEsc(c.ic)}${c.policies.length?' · Existing client':''}${c.pipelines.length?' · Active pipeline':''}</span></button>`).join(''):'<div style="padding:14px;color:#778096">No matching client</div>'):''}
 }
-function activityChooseSearchClient(id){
- const select=document.getElementById('activityPipelineClientSelect'),search=document.getElementById('activityPipelineClientSearch'),results=document.getElementById('activityPipelineClientSearchResults');if(!select)return;
- select.value=String(id);
- const chosen=(db.cases||[]).find(c=>String(c.id)===String(id));
- if(search&&chosen)search.value=chosen.client||'';
- if(results){results.style.display='none';results.innerHTML='';}
-}
+function activityChooseSearchClient(key){const select=document.getElementById('activityClientSelect');if(select){select.value=key;activityClientChanged(key)}const search=document.getElementById('activityClientSearch'),results=document.getElementById('activityClientSearchResults');const c=activityClientRows().find(x=>x.key===key);if(search&&c)search.value=c.client;if(results){results.style.display='none';results.innerHTML=''}}
+function activityClientChanged(key){const client=activityClientRows().find(x=>x.key===key);const p=document.getElementById('activityPolicySelect'),c=document.getElementById('activityPipelineSelect');if(p)p.innerHTML=activityPolicyOptions(key);if(c)c.innerHTML=activityCaseOptions(key);const info=document.getElementById('activityClientContext');if(info)info.textContent=client?`${client.policies.length} policy record(s) · ${client.pipelines.length} active pipeline case(s)`:'Select a client to see related policies and pipeline cases';}
 
 function activityRender(){
  const root=document.getElementById('activities');if(!root)return;
@@ -1996,61 +1999,65 @@ function activityRender(){
  const monthLogs=store.logs.filter(x=>(x.date||'').startsWith(monthKey)),day=store.logs.filter(x=>x.date===chosen);
  const firstDay=(monthStart.getDay()+6)%7,days=Array.from({length:monthEnd.getDate()},(_,i)=>i+1),countByDate={};
  monthLogs.forEach(x=>countByDate[x.date]=(countByDate[x.date]||0)+1);
- const cases=activityPipelineCases(),linkedCount=monthLogs.filter(x=>x.caseId).length;
- const selectedCase=window.__activityCaseFilter||'';
- const selectedLogs=selectedCase?store.logs.filter(x=>String(x.caseId||'')===selectedCase):[];
- const selectedRecord=(db.cases||[]).find(c=>String(c.id)===selectedCase);
+ const clients=activityClientRows(),linkedCount=monthLogs.filter(x=>x._clientId||x.clientId).length;
+ const selectedClient=window.__activityClientFilter||'';
+ const selectedLogs=selectedClient?store.logs.filter(x=>String(x.clientKey||'')===selectedClient):[];
+ const selectedRecord=clients.find(c=>c.key===selectedClient);
  const monthLabel=monthStart.toLocaleDateString('en-MY',{month:'long',year:'numeric'});
- const caseOpts='<option value="">Choose a Pipeline client…</option>'+cases.map(c=>`<option value="${activityEsc(c.id)}" ${String(c.id)===selectedCase?'selected':''}>${activityEsc(c.client||'Unnamed client')} · ${activityEsc(normalizeStatus(c.status))}${c.ic?' · '+activityEsc(c.ic):''}</option>`).join('');
+ const clientOpts=activityClientOptions(selectedClient);
  const todayFollowups=store.logs.filter(x=>x.dueDate&&x.dueDate<=today&&x.nextAction).length;
  root.innerHTML=`
- <div class="activityHero"><div class="activityHeroTop"><div><div class="eyebrow">PIPELINE · CLIENT EXECUTION</div><h1>Daily Activities</h1><p>Every activity is linked to a client and moves the Pipeline forward.</p></div><div class="activityHeroIcon">⚡</div></div><div class="activityQuickStats"><div class="activityQuickStat"><b>${day.length}</b><span>ACTIVITIES · SELECTED DAY</span></div><div class="activityQuickStat"><b>${linkedCount}</b><span>PIPELINE-LINKED · THIS MONTH</span></div><div class="activityQuickStat"><b>${cases.length}</b><span>ACTIVE PIPELINE CLIENTS</span></div></div></div>
+ <div class="activityHero"><div class="activityHeroTop"><div><div class="eyebrow">CLIENT RELATIONSHIP · DAILY EXECUTION</div><h1>Daily Activities</h1><p>Record prospecting, sales, relationship building and servicing for every client.</p></div><div class="activityHeroIcon">⚡</div></div><div class="activityQuickStats"><div class="activityQuickStat"><b>${day.length}</b><span>ACTIVITIES · SELECTED DAY</span></div><div class="activityQuickStat"><b>${linkedCount}</b><span>CLIENT-LINKED · THIS MONTH</span></div><div class="activityQuickStat"><b>${clients.length}</b><span>CLIENT RECORDS</span></div></div></div>
  <div class="activitySectionHead"><div><h2>🗓 Activity Calendar</h2><div class="activitySectionSub" style="margin:4px 0 0">Select a date to review or add activity</div></div><input class="activityDateInput" id="activityReportDate" type="date" value="${activityEsc(chosen)}" onchange="activityRender()"></div>
  <div class="activityPanel"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><button class="secondary" onclick="activityShiftMonth(-1)">‹</button><b>${activityEsc(monthLabel)}</b><button class="secondary" onclick="activityShiftMonth(1)">›</button></div><div class="activityCalendar">${['M','T','W','T','F','S','S'].map(x=>`<div class="activityCalendarDow">${x}</div>`).join('')}${Array.from({length:firstDay},()=>'<div></div>').join('')}${days.map(n=>{const d=`${yy}-${String(mm).padStart(2,'0')}-${String(n).padStart(2,'0')}`,isSelected=d===chosen;return `<button class="activityCalendarDay ${isSelected?'selected':''} ${d===today?'today':''}" onclick="activitySelectDate('${d}')"><span>${n}</span>${countByDate[d]?`<i>${countByDate[d]}</i>`:''}</button>`}).join('')}</div><div class="small muted" style="margin-top:10px">Number below a date indicates logged activities.</div></div>
- <div class="activitySectionHead"><div><h2>⚡ Quick Log</h2><div class="activitySectionSub" style="margin:4px 0 0">Choose an activity to prefill the form below, then link it to a Pipeline client.</div></div></div>
- <div class="activityPanel"><div class="activityQuickLogGrid">${[['Phone Call','📞'],['WhatsApp','💬'],['Meeting','🤝'],['Follow-up','🔁'],['Policy Review','🛡️'],['Proposal Presentation','📄']].map(([t,i])=>`<button class="activityQuickLogBtn" onclick="activityQuickLog('${activityEsc(t)}','${activityEsc(chosen)}')"><span>${i}</span><b>${activityEsc(t==='Proposal Presentation'?'Proposal':t)}</b></button>`).join('')}</div></div>
- <div class="activitySectionHead"><div><h2>👤 Client Activity History</h2><div class="activitySectionSub" style="margin:4px 0 0">Select a Pipeline client to view all linked interactions</div></div></div>
- <div class="activityPanel"><label class="activityProfileSelect">Pipeline Client<select onchange="activityChooseClient(this.value)">${caseOpts}</select></label>${selectedCase?`<div class="activityProfileCard"><b>${activityEsc(selectedRecord?.client||'Client')}</b><span>${activityEsc(normalizeStatus(selectedRecord?.status||''))}${selectedRecord?.ic?' · '+activityEsc(selectedRecord.ic):''}</span>${selectedRecord?.nextAction?`<div class="small" style="margin-top:8px">Next Action: ${activityEsc(selectedRecord.nextAction)}</div>`:''}<div class="activityProfileStats"><div><strong>${selectedLogs.length}</strong><small>Total activities</small></div><div><strong>${activityEsc(selectedRecord?.appointmentDate||selectedLogs.map(x=>x.appointmentDate).filter(Boolean).sort().slice(-1)[0]||'—')}</strong><small>Appointment date</small></div><div><strong>${activityEsc(selectedRecord?.nextActionDueDate||selectedRecord?.dueDate||selectedLogs.filter(x=>x.dueDate).map(x=>x.dueDate).sort()[0]||'—')}</strong><small>Next action due</small></div><div><strong>${activityEsc(selectedLogs.map(x=>x.date).sort().slice(-1)[0]||'—')}</strong><small>Last activity</small></div></div></div><div style="margin-top:12px">${selectedLogs.length?selectedLogs.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(x=>`<div class="activityLogItem"><div class="activityLogTop"><b>${activityEsc(x.type)}</b><span class="small">${activityEsc(x.result||'')}</span></div><div class="small muted">${activityEsc(x.date)} · ${activityEsc(x.time||'')}${x.appointmentDate?' · Appointment '+activityEsc(x.appointmentDate):''}</div>${x.notes?`<div class="small">${activityEsc(x.notes)}</div>`:''}${x.nextAction?`<div class="small">Next: ${activityEsc(x.nextAction)}${x.dueDate?' · Due '+activityEsc(x.dueDate):''}</div>`:''}${x.pipelineStatusAfter?`<div class="small">Pipeline: ${activityEsc(x.pipelineStatusAfter)}</div>`:''}<div class="activityLogFoot"><button class="textButton" onclick="editActivityLog('${activityEsc(x.id)}')">Edit</button></div></div>`).join(''):'<div class="activityEmpty">No activity history for this Pipeline client yet.</div>'}</div>`:'<div class="activityEmpty">Choose a Pipeline client above to view their activity timeline.</div>'}</div>
- <div class="activitySectionHead"><div><h2>＋ Detailed Activity</h2><div class="activitySectionSub" style="margin:4px 0 0">Link the activity to a Pipeline client and record the next step.</div></div></div>
+ <div class="activitySectionHead"><div><h2>⚡ Quick Log</h2><div class="activitySectionSub" style="margin:4px 0 0">Choose an activity to prefill the form below, then link it to any client.</div></div></div>
+ <div class="activityPanel"><div class="activityQuickLogGrid">${[['Build Rappo / Catch Up','🤝'],['Policy Review','🛡️'],['Policy Servicing','⚙️'],['Follow Up','🔁'],['Appointment','📅'],['Application / Proposal','📄']].map(([t,i])=>`<button class="activityQuickLogBtn" onclick="activityQuickLog('${activityEsc(t)}','${activityEsc(chosen)}')"><span>${i}</span><b>${activityEsc(t)}</b></button>`).join('')}</div></div>
+ <div class="activitySectionHead"><div><h2>👤 Client Activity History</h2><div class="activitySectionSub" style="margin:4px 0 0">One client profile can contain multiple policies and active pipeline cases</div></div></div>
+ <div class="activityPanel"><label class="activityProfileSelect">Client<select onchange="activityChooseClient(this.value)">${clientOpts}</select></label>${selectedClient?`<div class="activityProfileCard"><b>${activityEsc(selectedRecord?.client||'Client')}</b><span>${activityEsc(selectedRecord?.ic||'') } · ${selectedRecord?.policies.length||0} policy record(s) · ${selectedRecord?.pipelines.length||0} active pipeline case(s)</span><div class="activityProfileStats"><div><strong>${selectedLogs.length}</strong><small>Total activities</small></div><div><strong>${activityEsc(selectedLogs.map(x=>x.date).sort().slice(-1)[0]||'—')}</strong><small>Last activity</small></div></div></div><div style="margin-top:12px">${selectedLogs.length?selectedLogs.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(x=>`<div class="activityLogItem"><div class="activityLogTop"><b>${activityEsc(x.type)}</b><span class="small">${activityEsc(x.result||'')}</span></div><div class="small muted">${activityEsc(x.date)} · ${activityEsc(x.time||'')}${x.policyName?' · '+activityEsc(x.policyName):''}${x.pipelineName?' · '+activityEsc(x.pipelineName):''}</div>${x.notes?`<div class="small">${activityEsc(x.notes)}</div>`:''}${x.nextAction?`<div class="small">Next: ${activityEsc(x.nextAction)}${x.dueDate?' · Due '+activityEsc(x.dueDate):''}</div>`:''}<div class="activityLogFoot"><button class="textButton" onclick="editActivityLog('${activityEsc(x.id)}')">Edit</button></div></div>`).join(''):'<div class="activityEmpty">No activity history for this client yet.</div>'}</div>`:'<div class="activityEmpty">Choose a client above to view their complete activity timeline.</div>'}</div>
+ <div class="activitySectionHead"><div><h2>＋ Detailed Activity</h2><div class="activitySectionSub" style="margin:4px 0 0">Link the activity to a client, with an optional policy or Pipeline case.</div></div></div>
  <div class="activityPanel"><form id="activityDetailForm" onsubmit="saveDetailedActivity(event)"><div class="activityFormGrid">
  <label>Activity Date<input name="date" type="date" value="${activityEsc(chosen)}" required></label>
- <label class="activityFull">Search Pipeline Client<input type="search" id="activityPipelineClientSearch" placeholder="Search client name / IC…" oninput="activityFilterClientSelect(this)" autocomplete="off"><div id="activityPipelineClientSearchResults" style="display:none;margin-top:8px;border:1px solid #dfe3ee;border-radius:14px;background:#fff;max-height:240px;overflow-y:auto"></div></label><label>Pipeline Client<select id="activityPipelineClientSelect" name="caseId" required>${activityCaseOptions()}</select></label>
- <label>Activity Type<select name="type" required><option>Phone Call</option><option>WhatsApp</option><option>Meeting</option><option>Follow-up</option><option>Policy Review</option><option>Proposal Presentation</option><option>Application / Documents</option><option>Case Progress</option><option>Other</option></select></label>
- <label>Contact Result<select name="result" required onchange="activityResultChanged(this.value)"><option value="Connected">Connected</option><option value="No Reply">No Reply</option><option value="Appointment Booked">Appointment Booked</option><option value="Interested">Interested</option><option value="Follow-up Needed">Follow-up Needed</option><option value="Not Interested">Not Interested</option><option value="Case Progressed">Case Progressed</option><option value="Other">Other</option></select></label>
- <label id="activityAppointmentWrap">Appointment Date (optional)<input name="appointmentDate" type="date"><small class="small muted">Independent of Contact Result. Add a date whenever a meeting is scheduled.</small></label>
- <label id="activityNextStageWrap">Update Pipeline Stage<select name="nextStage"><option value="">No status change</option><option value="To Meet Up">To Meet Up</option><option value="To Follow Up">To Follow Up</option><option value="To Submit">To Submit</option><option value="To Approve">To Approve</option><option value="Standby">Standby</option></select><small class="muted">Choose manually. Pipeline status will only change when you select a stage.</small></label>
- <label class="activityFull">Notes<textarea name="notes" rows="3" placeholder="沟通重点、客户异议、会谈结果…"></textarea></label>
+ <label class="activityFull">Search Client<input type="search" id="activityClientSearch" placeholder="Search client name / IC…" oninput="activityFilterClientSelect(this)" autocomplete="off"><div id="activityClientSearchResults" style="display:none;margin-top:8px;border:1px solid #dfe3ee;border-radius:14px;background:#fff;max-height:240px;overflow-y:auto"></div></label>
+ <label class="activityFull">Client<select id="activityClientSelect" name="clientKey" onchange="activityClientChanged(this.value)" required>${activityClientOptions()}</select><small id="activityClientContext" class="small muted">Select a client to see related policies and pipeline cases</small></label>
+ <label>Related Policy (optional)<select id="activityPolicySelect" name="policyId">${activityPolicyOptions()}</select></label>
+ <label>Related Pipeline Case (optional)<select id="activityPipelineSelect" name="caseId">${activityCaseOptions()}</select></label>
+ <label>Activity Type<select name="type" required>${ACTIVITY_TYPES.map(v=>`<option>${activityEsc(v)}</option>`).join('')}</select></label>
+ <label>Contact Result<select name="result" required>${ACTIVITY_RESULTS.map(v=>`<option>${activityEsc(v)}</option>`).join('')}</select></label>
+ <label>Appointment Date (optional)<input name="appointmentDate" type="date"></label>
+ <label id="activityNextStageWrap">Update Pipeline Stage (optional)<select name="nextStage"><option value="">No status change</option><option value="To Approach">To Approach</option><option value="To Meet Up">To Meet Up</option><option value="To Follow Up">To Follow Up</option><option value="To Submit">To Submit</option><option value="To Approve">To Approve</option></select></label>
+ <label class="activityFull">Notes<textarea name="notes" rows="3" placeholder="沟通重点、客户需求、服务内容、会谈结果…"></textarea></label>
  <label class="activityFull">Next Action Due Date<input name="dueDate" type="date"></label>
- <div class="activityFull"><button class="activitySaveBtn" type="submit">Save Activity & Update Pipeline</button></div></div></form></div>
+ <div class="activityFull"><button class="activitySaveBtn" type="submit">Save Activity</button></div></div></form></div>
  <div class="activitySectionHead"><div><h2>Recent Activities</h2><div class="activitySectionSub" style="margin:4px 0 0">${activityEsc(chosen)} · saved interaction records</div></div><button class="secondary activityExport" onclick="exportActivityLogs()">Export</button></div>
  <div class="activityPanel">${day.length?day.slice().sort((a,b)=>(b.time||'').localeCompare(a.time||'')).map(x=>`<div class="activityLogItem"><div class="activityLogTop"><b>${activityEsc(x.clientName||'General activity')} · ${activityEsc(x.type)}</b><span class="small">${activityEsc(x.result||'')}</span></div><div class="small muted">${activityEsc(x.time||'')}${x.appointmentDate?' · Appointment '+activityEsc(x.appointmentDate):''}</div>${x.notes?`<div class="small">${activityEsc(x.notes)}</div>`:''}<div class="activityLogFoot"><span class="small muted">${activityEsc(x.pipelineStatusAfter||'')}</span><button class="textButton" onclick="editActivityLog('${activityEsc(x.id)}')">Edit</button><button class="textButton" onclick="deleteActivityLog('${activityEsc(x.id)}')">Delete</button></div></div>`).join(''):'<div class="activityEmpty">No activities logged for this date.</div>'}</div>`;
 }
 function activityShiftMonth(delta){const el=document.getElementById('activityReportDate');const d=new Date((el?.value||activityDate())+'T00:00:00');d.setMonth(d.getMonth()+delta,1);const next=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;if(el)el.value=next;activityRender()}
 function activitySelectDate(d){const el=document.getElementById('activityReportDate');if(el)el.value=d;activityRender()}
-function activityChooseClient(id){window.__activityCaseFilter=id;activityRender()}
-function activityQuickLog(type,date){const form=document.getElementById('activityDetailForm');if(!form)return;form.elements.type.value=type;form.elements.date.value=date||activityDate();form.scrollIntoView({behavior:'smooth',block:'center'});form.elements.caseId.focus();toast('Select a Pipeline client to continue')}
-function activityResultChanged(value){/* Appointment Date is independent of Contact Result. */ const wrap=document.getElementById('activityAppointmentWrap');if(wrap)wrap.style.display='';}
+function activityChooseClient(key){window.__activityClientFilter=key;activityRender()}
+function activityQuickLog(type,date){const form=document.getElementById('activityDetailForm');if(!form)return;form.elements.type.value=type;form.elements.date.value=date||activityDate();form.scrollIntoView({behavior:'smooth',block:'center'});form.elements.clientKey.focus();toast('Select a client to continue')}
+function activityResultChanged(value){/* kept for compatibility with older inline handlers */}
 function saveDetailedActivity(e){
- e.preventDefault();const f=e.currentTarget,fd=new FormData(f),caseId=String(fd.get('caseId')||''),caseObj=(db.cases||[]).find(c=>String(c.id)===caseId);
- if(!caseObj){toast('Please select a Pipeline client');return}
- const result=String(fd.get('result')||''),type=String(fd.get('type')||''),appointmentDate=String(fd.get('appointmentDate')||'');
- const oldStage=normalizeStatus(caseObj.status);const nextStage=String(fd.get('nextStage')||'');
- // Appointment date is recorded independently. Pipeline stage changes only when the user explicitly selects one.
- if(nextStage&&nextStage!==oldStage){caseObj.status=nextStage;try{behaviourRecordTransition(oldStage,nextStage,caseObj,behaviourDate(new Date(String(fd.get('date')||activityDate())+'T00:00:00')))}catch(err){console.warn('Pipeline behaviour log skipped',err)}}
- if(appointmentDate)caseObj.appointmentDate=appointmentDate;
- caseObj.lastActivityDate=String(fd.get('date')||activityDate());
- const nextAction=String(fd.get('nextAction')||'').trim(),dueDate=String(fd.get('dueDate')||'');
- if(dueDate)caseObj.nextActionDueDate=dueDate;
- const st=activityStore();st.logs.push({id:'act_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),kind:'detail',date:String(fd.get('date')||activityDate()),caseId,clientId:String(caseObj.ic||caseObj.client||''),clientName:caseObj.client||'Linked client',type,result,appointmentDate,notes:String(fd.get('notes')||'').trim(),nextAction,dueDate,blocker:'',pipelineStatusBefore:oldStage,pipelineStatusAfter:normalizeStatus(caseObj.status),time:new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit',hour12:false})});
- saveActivityStore(st);localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();window.__activityCaseFilter=caseId;activityRender();toast(nextStage?`Activity saved · Pipeline moved to ${nextStage}`:'Activity saved');
+ e.preventDefault();const f=e.currentTarget,fd=new FormData(f),clientKey=String(fd.get('clientKey')||''),client=activityClientRows().find(c=>c.key===clientKey);
+ if(!client){toast('Please select a client');return}
+ const caseId=String(fd.get('caseId')||''),caseObj=caseId?(db.cases||[]).find(c=>String(c.id)===caseId):null;
+ const policyId=String(fd.get('policyId')||''),policy=policyId?(db.cases||[]).find(c=>String(c.id)===policyId):null;
+ if(caseObj&&activityClientKey(caseObj)!==clientKey){toast('Selected Pipeline case does not belong to this client');return}
+ if(policy&&activityClientKey(policy)!==clientKey){toast('Selected policy does not belong to this client');return}
+ const result=String(fd.get('result')||''),type=String(fd.get('type')||''),appointmentDate=String(fd.get('appointmentDate')||''),oldStage=caseObj?normalizeStatus(caseObj.status):'',nextStage=String(fd.get('nextStage')||'');
+ if(nextStage&&caseObj&&nextStage!==oldStage){caseObj.status=nextStage;try{behaviourRecordTransition(oldStage,nextStage,caseObj,behaviourDate(new Date(String(fd.get('date')||activityDate())+'T00:00:00')))}catch(err){console.warn('Pipeline behaviour log skipped',err)}}
+ if(appointmentDate&&caseObj)caseObj.appointmentDate=appointmentDate;
+ const date=String(fd.get('date')||activityDate());if(caseObj)caseObj.lastActivityDate=date;
+ const nextAction=String(fd.get('nextAction')||'').trim(),dueDate=String(fd.get('dueDate')||'');if(dueDate&&caseObj)caseObj.nextActionDueDate=dueDate;
+ const st=activityStore();st.logs.push({id:'act_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),kind:'detail',date,clientKey,clientId:client.ic||'',_clientId:client._clientId||'',clientName:client.client||'Linked client',caseId:caseObj?String(caseObj.id):'',pipelineName:caseObj?(caseObj.product||caseObj.type||'New business'):'',policyId:policy?String(policy.id):'',policyName:policy?(policy.product||policy.type||policy.policyNo||'Policy'):'',type,result,appointmentDate,notes:String(fd.get('notes')||'').trim(),nextAction,dueDate,blocker:'',pipelineStatusBefore:oldStage,pipelineStatusAfter:caseObj?normalizeStatus(caseObj.status):'',time:new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit',hour12:false})});
+ saveActivityStore(st);localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();window.__activityClientFilter=clientKey;activityRender();toast(nextStage&&caseObj?`Activity saved · Pipeline moved to ${nextStage}`:'Activity saved');
 }
 function editActivityLog(id){
  const st=activityStore(),x=st.logs.find(v=>String(v.id)===String(id));if(!x){toast('Activity record not found');return;}
  const esc=activityEsc;
  const body=`<form id="editActivityLogForm" onsubmit="saveEditedActivity(event,'${esc(id)}')"><div class="activityFormGrid">
  <label>Activity Date<input name="date" type="date" value="${esc(x.date||activityDate())}" required></label>
- <label>Activity Type<select name="type">${['Phone Call','WhatsApp','Meeting','Follow-up','Policy Review','Proposal Presentation','Application / Documents','Case Progress','Other'].map(v=>`<option ${x.type===v?'selected':''}>${v}</option>`).join('')}</select></label>
- <label>Contact Result<select name="result">${['Connected','No Reply','Appointment Booked','Interested','Follow-up Needed','Not Interested','Case Progressed','Other'].map(v=>`<option ${x.result===v?'selected':''}>${v}</option>`).join('')}</select></label>
+ <label>Activity Type<select name="type">${ACTIVITY_TYPES.map(v=>`<option ${x.type===v?'selected':''}>${activityEsc(v)}</option>`).join('')}</select></label>
+ <label>Contact Result<select name="result">${ACTIVITY_RESULTS.map(v=>`<option ${x.result===v?'selected':''}>${activityEsc(v)}</option>`).join('')}</select></label>
  <label>Appointment Date<input name="appointmentDate" type="date" value="${esc(x.appointmentDate||'')}"></label>
  <label class="activityFull">Notes<textarea name="notes" rows="3">${esc(x.notes||'')}</textarea></label>
  <label>Next Action<input name="nextAction" value="${esc(x.nextAction||'')}"></label><label>Next Action Due Date<input name="dueDate" type="date" value="${esc(x.dueDate||'')}"></label>
@@ -2227,7 +2234,7 @@ function caseForm(mode,ic='',reduceId='',clientName=''){
  `<div class="field"><label>Full Name</label><input name="client" value="${String(c.client||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}" required></div><div class="field"><label>Client IC</label><input name="ic" value="${String(c.ic||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}"></div>`);
  let top=`${mode==='topup'?`<div class="field full"><label>Existing Product to Top Up</label><select name="parentPolicy">${existingProducts.map(p=>`<option>${p}</option>`).join('')}</select></div>`:''}`;
  let title=isReduce?'Reduce Policy':mode==='topup'?'Top Up':mode==='existing'?'New Business · Existing Client':'New Business · New Client';
- let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Standby','Inforce','ROP','ROP Revoke','Lapse','Revival','Cancellation','Surrender','Ceased'];
+ let statusOptions=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce','ROP','ROP Revoke','Lapse','Revival','Cancellation','Surrender','Ceased'];
  let benefits=JSON.parse(c.benefit||'{}');
  let currentStatus=normalizeStatus(c.policyMotionStatus||c.status||'To Approach');
  let inforceVisible=['Inforce','ROP','ROP Revoke','Revival','Cancellation'].includes(currentStatus);
@@ -2340,7 +2347,7 @@ function behaviourCount(date,action){return db.behaviourTracker.logs.filter(x=>x
 function behaviourActions(){return [['approach','Approach'],['meet','Meet Up'],['follow','Follow Up'],['submit','Submit'],['approve','Approve']]}
 function behaviourRecordTransition(oldStatus,newStatus,caseObj,date=behaviourDate(new Date())){
  const old=normalizeStatus(oldStatus),next=normalizeStatus(newStatus);
- const order={'To Approach':0,'To Meet Up':1,'To Follow Up':2,'To Submit':3,'To Approve':4,'Standby':5,'Inforce':6};
+ const order={'To Approach':0,'To Meet Up':1,'To Follow Up':2,'To Submit':3,'To Approve':4,'Inforce':5};
  const actionFor={1:'approach',2:'meet',3:'follow',4:'submit',5:'approve'};
  if(order[old]===undefined||order[next]===undefined||order[next]<=order[old])return;
  for(let level=order[old]+1;level<=order[next];level++){const action=actionFor[level];if(action)behaviourLog(date,action,caseObj)}
@@ -2442,7 +2449,7 @@ function breakdown(title,rows,mode='tpc'){
  modal(title+' Breakdown',`<div class="small" style="margin-bottom:12px">${rows.length} record${rows.length===1?'':'s'} · ${money(total)}</div><div class="list">${rows.map(c=>`<div class="item"><div class="row"><div><b>${c.client||'-'}</b><div class="small">${c.product||c.type||'-'} · ${c.kind||'New Business'}</div><div class="small">${dateStr(c.inforce)} · ${c.policyNumber||'-'}</div></div><b>${money(mode==='income'?monthlyComm(c,monthKey()+'-01'):tpc(c))}</b></div></div>`).join('')||'<div class="empty">No records.</div>'}</div>`,true)
 }
 function pipeline(){
- let statuses=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Standby','Inforce'];
+ let statuses=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Inforce'];
  document.getElementById('pipeline').innerHTML=`<div class="section">Sales Pipeline</div><div class="list">${statuses.map((st,i)=>{
    let currentYear=String(new Date().getFullYear()); let x=db.cases.filter(c=>normalizeStatus(c.status)===st&&(st==='Inforce'?String(c.inforce||'').startsWith(currentYear):c.kind!=='Existing Policy')),id='stage'+i;
    return `<div class="card">
@@ -3675,7 +3682,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
     <!-- Daily Activity Summary removed from Home by request -->
     <div class="card pipelineOverviewWrap">
       <div class="pipelineOverviewHead"><h3>Pipeline Overview</h3><button class="pipelineOverviewSub pipelineViewAllBtn" type="button" onclick="show('pipeline')">Tap to view</button></div>
-      <div class="pipelineMini pipelineOverview"><div class="card pipeMini approach" onclick="homePipelineBreakdown('To Approach')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">👤</div><div class="pipeInfo"><div class="n">${db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='To Approach').length}</div><div class="s">To Approach</div></div></div><div class="card pipeMini follow" onclick="homePipelineBreakdown('To Follow Up')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">⏰</div><div class="pipeInfo"><div class="n">${follow}</div><div class="s">To Follow Up</div></div></div><div class="card pipeMini meet" onclick="homePipelineBreakdown('To Meet Up')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">📅</div><div class="pipeInfo"><div class="n">${meet}</div><div class="s">To Meet Up</div></div></div><div class="card pipeMini submit" onclick="homePipelineBreakdown('To Submit')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">📄</div><div class="pipeInfo"><div class="n">${submit}</div><div class="s">To Submit</div></div></div><div class="card pipeMini approve" onclick="homePipelineBreakdown('To Approve')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">💎</div><div class="pipeInfo"><div class="n">${approve}</div><div class="s">To Approve</div></div></div><div class="card pipeMini standby" onclick="homePipelineBreakdown('Standby')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">⏸️</div><div class="pipeInfo"><div class="n">${db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='Standby').length}</div><div class="s">Standby</div></div></div></div>
+      <div class="pipelineMini pipelineOverview"><div class="card pipeMini approach" onclick="homePipelineBreakdown('To Approach')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">👤</div><div class="pipeInfo"><div class="n">${db.cases.filter(c=>c.kind!=='Existing Policy'&&normalizeStatus(c.status)==='To Approach').length}</div><div class="s">To Approach</div></div></div><div class="card pipeMini follow" onclick="homePipelineBreakdown('To Follow Up')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">⏰</div><div class="pipeInfo"><div class="n">${follow}</div><div class="s">To Follow Up</div></div></div><div class="card pipeMini meet" onclick="homePipelineBreakdown('To Meet Up')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">📅</div><div class="pipeInfo"><div class="n">${meet}</div><div class="s">To Meet Up</div></div></div><div class="card pipeMini submit" onclick="homePipelineBreakdown('To Submit')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">📄</div><div class="pipeInfo"><div class="n">${submit}</div><div class="s">To Submit</div></div></div><div class="card pipeMini approve" onclick="homePipelineBreakdown('To Approve')" role="button" tabindex="0"><div class="pipeIcon" aria-hidden="true">💎</div><div class="pipeInfo"><div class="n">${approve}</div><div class="s">To Approve</div></div></div></div></div>
     </div>
     <div class="homeSectionHead"><h3>Existing Portfolio</h3></div>
     <div class="card portfolioHero breakdownTap" onclick="show('portfolio',null)"><div class="label">Active Policies</div><div class="portfolioValue">${active.length}</div><div class="portfolioSub">Under ${clientCount} client${clientCount===1?'':'s'} · active Inforce policies only</div><div class="portfolioMeta two"><div><b>${active.length}</b><span>Active Policies</span></div><div><b>${clientCount}</b><span>Clients</span></div></div></div>
@@ -3706,7 +3713,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
    const dayMotions=(db.salesMotions||[]).filter(m=>String(m.date||'')===today);
    const logs=((db.behaviourTracker&&db.behaviourTracker.logs)||[]).filter(x=>x.date===today);
    const checkin=(db.dailyReportCheckins||{})[today]||{};
-   const statuses=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Standby'];
+   const statuses=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'];
    const statusOf=c=>normalizeStatus(c.status);
    const caseStageHistory=db.caseStageHistory||[];
    const historyToday=caseStageHistory.filter(h=>h.changeDate===today);
@@ -3751,11 +3758,11 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
  };
  window.downloadDailyReport=function downloadDailyReport(format){const {report,markdown}=buildDailyReport();const content=format==='json'?JSON.stringify(report,null,2):markdown,mime=format==='json'?'application/json;charset=utf-8':'text/markdown;charset=utf-8',blob=new Blob([content],{type:mime}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`CRM_Daily_Report_${report.reportDate}.${format==='json'?'json':'md'}`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Daily report downloaded');};
  window.copyDailyReport=async function copyDailyReport(){const {markdown}=buildDailyReport();try{await navigator.clipboard.writeText(markdown);toast('Report copied')}catch(e){modal('Copy report',`<textarea style="width:100%;min-height:240px">${markdown.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</textarea><div class="small">Select and copy the report text.</div>`,true)}};
- function pipelineStageClass(status){const s=normalizeStatus(status);return ({'To Approach':'approach','To Meet Up':'meet','To Follow Up':'follow','To Submit':'submit','To Approve':'approve','Standby':'standby'})[s]||'neutral'}
+ function pipelineStageClass(status){const s=normalizeStatus(status);return ({'To Approach':'approach','To Meet Up':'meet','To Follow Up':'follow','To Submit':'submit','To Approve':'approve'})[s]||'neutral'}
  function iosPipeline(){
    // Pipeline only contains the five actionable prospect stages. Inforce and
    // post-sale statuses remain available in Portfolio / policy records, not here.
-   const pipelineStatuses=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Standby'];
+   const pipelineStatuses=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'];
    const stages=['All',...pipelineStatuses];
    let activeStage=window.iosPipeStage||'All';
    if(activeStage!=='All'&&!pipelineStatuses.includes(activeStage)) activeStage='All';
@@ -3920,7 +3927,7 @@ function iosCoachStructured(approve,submit,follow,meet,approach,tpcNow,cases){
      const avgCaseTPC=periodCaseCount>0?periodTPC/periodCaseCount:0;
      const tpcValues=periodInforce.map(getTPC).filter(v=>v>0).sort((a,b)=>a-b);
      const medianCaseTPC=tpcValues.length?(tpcValues.length%2?tpcValues[(tpcValues.length-1)/2]:(tpcValues[tpcValues.length/2-1]+tpcValues[tpcValues.length/2])/2):0;
-     const funnelOrder=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve','Standby'];
+     const funnelOrder=['To Approach','To Meet Up','To Follow Up','To Submit','To Approve'];
      const funnelCounts=Object.fromEntries(funnelOrder.map(k=>[k,pipeline.filter(c=>getStatus(c)===k).length]));
      const toApproveTPC=potentialApprovedRows.reduce((a,c)=>a+getTPC(c),0);
      const stageTPC=Object.fromEntries(funnelOrder.map(k=>[k,pipeline.filter(c=>getStatus(c)===k).reduce((a,c)=>a+getTPC(c),0)]));
