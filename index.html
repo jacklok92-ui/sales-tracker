@@ -2085,7 +2085,20 @@ function saveEditedActivity(e,id){
  Object.assign(x,{date:String(fd.get('date')||x.date),type:String(fd.get('type')||x.type),result:String(fd.get('result')||x.result),appointmentDate:String(fd.get('appointmentDate')||''),notes:String(fd.get('notes')||'').trim(),nextAction:String(fd.get('nextAction')||'').trim(),dueDate:String(fd.get('dueDate')||''),blocker:String(fd.get('blocker')||'').trim()});
  const linked=(db.cases||[]).find(c=>String(c.id)===oldCaseId);
  if(linked){const related=st.logs.filter(v=>String(v.caseId||'')===oldCaseId);const dates=related.filter(v=>v.appointmentDate).map(v=>v.appointmentDate).sort();linked.appointmentDate=dates.slice(-1)[0]||'';const dueDates=related.filter(v=>v.dueDate).map(v=>v.dueDate).sort();linked.nextActionDueDate=dueDates[0]||linked.nextActionDueDate||'';const latestAction=related.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).find(v=>v.nextAction);if(latestAction)linked.nextAction=latestAction.nextAction;linked.lastActivityDate=x.date;}
- saveActivityStore(st);localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();closeModal();activityRender();render();toast('Activity updated');
+ saveActivityStore(st);
+ // Sync the independent Next Action ledger with edits to this exact Activity.
+ // Never replace a newer Pending task created by a later Activity.
+ const ns=migrateLegacyNextActions(),clientKey=String(x.clientKey||''),sourceId=String(x.id),now=new Date().toISOString();
+ const linkedTask=ns.items.find(t=>t.sourceType==='activity'&&String(t.sourceId)===sourceId);
+ if(linkedTask){
+  if(x.nextAction&&x.dueDate)Object.assign(linkedTask,{description:x.nextAction,dueDate:x.dueDate,clientName:x.clientName||linkedTask.clientName,caseId:String(x.caseId||linkedTask.caseId||''),status:'Pending',updatedAt:now});
+  else if(linkedTask.status==='Pending')Object.assign(linkedTask,{status:'Superseded',supersededAt:now,supersededReason:'Activity Next Action cleared'});
+ }else if(x.nextAction&&x.dueDate){
+  const current=ns.items.find(t=>t.clientKey===clientKey&&t.status==='Pending');
+  const latest=(st.logs||[]).filter(v=>v.clientKey===clientKey).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))[0];
+  if(!current&&latest&&String(latest.id)===sourceId)ns.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey,clientId:x.clientId||'',clientName:x.clientName||'Client',caseId:String(x.caseId||''),sourceType:'activity',sourceId,description:x.nextAction,dueDate:x.dueDate,status:'Pending',createdAt:now});
+ }
+ saveNextActionStore(ns);localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();closeModal();activityRender();render();toast('Activity and Next Action updated');
 }
 function deleteActivityLog(id){if(!confirm('Delete this activity record?'))return;const st=activityStore();st.logs=st.logs.filter(x=>x.id!==id);saveActivityStore(st);if(window.cloudReady)window.cloudScheduleSync?.();activityRender()}
 function exportActivityLogs(){const blob=new Blob([JSON.stringify(activityStore(),null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CRM_Daily_Activities.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
@@ -4467,7 +4480,8 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     (db.contests||[]).forEach(c=>{
       ensureCloudId(c);
       contestMetadata[String(c._cloudId)]={
-        trackingMode:c.trackingMode==='cumulative'?'cumulative':'standard',
+        trackingMode:['cumulative','highest_tier'].includes(c.trackingMode)?c.trackingMode:'standard',
+        metric:c.metric||'TPC',
         rewardTiers:Array.isArray(c.rewardTiers)?c.rewardTiers.map(t=>({target:num(t.target),reward:String(t.reward||'')})):[]
       };
     });
@@ -4618,8 +4632,9 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       const meta=contestMetadata[String(r.id)]||{};
       const local=localContestByCloudId.get(String(r.id))||{};
       const trackingMode=meta.trackingMode||local.trackingMode||'standard';
+      const savedMetric=meta.metric||r.metric||local.metric||'TPC';
       const savedTiers=Array.isArray(meta.rewardTiers)?meta.rewardTiers:(Array.isArray(local.rewardTiers)?local.rewardTiers:[]);
-      return {_cloudId:r.id,name:r.name||'',start:r.start_date||'',end:r.end_date||'',metric:r.metric||'TPC',type:Array.isArray(r.product_restriction)&&r.product_restriction.length?normalizeProduct(r.product_restriction[0]):'Any',target:num(r.target),trackingMode,rewardTiers:savedTiers};
+      return {_cloudId:r.id,name:r.name||'',start:r.start_date||'',end:r.end_date||'',metric:savedMetric,type:Array.isArray(r.product_restriction)&&r.product_restriction.length?normalizeProduct(r.product_restriction[0]):'Any',target:num(r.target),trackingMode,rewardTiers:savedTiers};
     });
     const coverage=(data.coverage||[]).map(r=>{const x=r.calculation&&typeof r.calculation==='object'?{...r.calculation}:{ };x._cloudId=r.id;x.id=r.id;x._clientId=r.client_id||'';x.createdAt=r.created_at?new Date(r.created_at).getTime():Date.now();x.clientName=r.client_name||x.clientName||'';x.clientIc=r.client_ic||x.clientIc||'';x.monthlyIncome=num(r.monthly_income);x.spouseIncome=num(r.spouse_income);x.children=num(r.children);x.youngestChildAge=r.youngest_child_age;x.savings=num(r.savings);return x;});
     const settingsRow=(data.settings||[]).find(x=>x.setting_key==='settings');
