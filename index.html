@@ -3684,7 +3684,33 @@ function migrateLegacyNextActions(){
   const logs=activityStore().logs||[];logs.forEach(x=>{if(!x.dueDate||!x.nextAction)return;add({sourceType:'activity',sourceId:x.id,clientKey:x.clientKey,clientId:x.clientId,clientName:x.clientName,caseId:x.caseId,action:x.nextAction,due:x.dueDate});});
   st.migrated=true;
  }
- // Enforce one current Pending Next Action per client. Keep the most recently created item; older pending items remain in history as Superseded.
+ // Repair older ledger entries whose clientKey was blank or used a legacy identity.
+ // Match by caseId first, then IC, then normalized client name.
+ const logs=activityStore().logs||[];
+ const validClientKeys=new Set(activityClientRows().map(v=>v.key));
+ const canonicalKeyForTask=t=>{
+  if(t.clientKey&&validClientKeys.has(t.clientKey))return t.clientKey;
+  const c=(db.cases||[]).find(v=>String(v.id)===String(t.caseId||''));
+  if(c)return activityClientKey(c);
+  const m=activityClientRows().find(v=>(t.clientId&&String(v.ic||'').trim()===String(t.clientId).trim())||normalizeClientLabel(v.client)===normalizeClientLabel(t.clientName));
+  return m?.key||'';
+ };
+ st.items.forEach(t=>{const k=canonicalKeyForTask(t);if(k)t.clientKey=k;});
+ // Reconcile legacy overdue items against the newest Activity for each client.
+ // If a later Activity already contains a new Next Action, that Activity is authoritative.
+ const latestByClient=new Map();
+ logs.filter(x=>x.clientKey&&x.nextAction&&x.dueDate).forEach(x=>{
+  const k=x.clientKey,stamp=String(x.date||'')+' '+String(x.time||'');
+  const prev=latestByClient.get(k);if(!prev||stamp>prev.stamp)latestByClient.set(k,{x,stamp});
+ });
+ latestByClient.forEach(({x},k)=>{
+  const sourceId=String(x.id),now=new Date().toISOString();
+  let current=st.items.find(t=>t.sourceType==='activity'&&String(t.sourceId)===sourceId);
+  if(!current){current={id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey:k,clientId:x.clientId||'',clientName:x.clientName||'Client',caseId:String(x.caseId||''),sourceType:'activity',sourceId,description:x.nextAction,dueDate:String(x.dueDate).slice(0,10),status:'Pending',createdAt:now};st.items.push(current);}
+  else Object.assign(current,{clientKey:k,description:x.nextAction,dueDate:String(x.dueDate).slice(0,10),clientName:x.clientName||current.clientName,caseId:String(x.caseId||current.caseId||'')});
+  st.items.forEach(t=>{if(t!==current&&t.clientKey===k&&t.status==='Pending'){t.status='Superseded';t.supersededAt=t.supersededAt||now;t.supersededBy=current.id;t.supersededReason='Reconciled against latest Activity';}});
+ });
+ // Enforce one current Pending Next Action per client, including repaired legacy records.
  const grouped=new Map();st.items.filter(t=>t.status==='Pending'&&t.clientKey).forEach(t=>{if(!grouped.has(t.clientKey))grouped.set(t.clientKey,[]);grouped.get(t.clientKey).push(t)});
  grouped.forEach(items=>{if(items.length<2)return;items.sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))||String(b.id||'').localeCompare(String(a.id||'')));const current=items[0];items.slice(1).forEach(t=>{t.status='Superseded';t.supersededAt=t.supersededAt||new Date().toISOString();t.supersededBy=current.id;});});
  saveNextActionStore(st);return st;
