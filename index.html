@@ -2063,7 +2063,7 @@ function saveDetailedActivity(e){
  const date=String(fd.get('date')||activityDate());if(caseObj)caseObj.lastActivityDate=date;
  const nextAction=String(fd.get('nextAction')||'').trim(),dueDate=String(fd.get('dueDate')||'');if(dueDate&&caseObj)caseObj.nextActionDueDate=dueDate;
  const st=activityStore();st.logs.push({id:'act_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),kind:'detail',date,clientKey,clientId:client.ic||'',_clientId:client._clientId||'',clientName:client.client||'Linked client',caseId:caseObj?String(caseObj.id):'',pipelineName:caseObj?(caseObj.product||caseObj.type||'New business'):'',policyId:policy?String(policy.id):'',policyName:policy?(policy.product||policy.type||policy.policyNo||'Policy'):'',type,result,appointmentDate,notes:String(fd.get('notes')||'').trim(),nextAction,dueDate,blocker:'',pipelineStatusBefore:oldStage,pipelineStatusAfter:caseObj?normalizeStatus(caseObj.status):'',time:new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit',hour12:false})});
- saveActivityStore(st);if(nextAction&&dueDate){const ns=migrateLegacyNextActions(),sourceId=st.logs[st.logs.length-1].id,now=new Date().toISOString();ns.items.forEach(t=>{if(t.clientKey===clientKey&&t.status==='Pending'){t.status='Superseded';t.supersededAt=now;t.supersededByActivityId=sourceId;}});if(!ns.items.some(t=>t.sourceType==='activity'&&String(t.sourceId)===String(sourceId))){ns.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey,clientId:client.ic||'',clientName:client.client||'Client',caseId:caseObj?String(caseObj.id):'',sourceType:'activity',sourceId,description:nextAction,dueDate,status:'Pending',createdAt:now});}saveNextActionStore(ns);}localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();window.__activityClientFilter=clientKey;activityRender();toast(nextStage&&caseObj?`Activity saved · Pipeline moved to ${nextStage}`:'Activity saved');
+ saveActivityStore(st);const sourceId=String(st.logs[st.logs.length-1].id);migrateLegacyNextActions();const ns=nextActionStore();if(nextAction&&dueDate&&!ns.items.some(t=>t.sourceType==='activity'&&String(t.sourceId)===sourceId)){ns.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey,clientId:client.ic||'',clientName:client.client||'Client',caseId:caseObj?String(caseObj.id):'',sourceType:'activity',sourceId,description:nextAction,dueDate,status:'Pending',createdAt:new Date().toISOString()});saveNextActionStore(ns);}localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();window.__activityClientFilter=clientKey;activityRender();toast(nextStage&&caseObj?`Activity saved · Pipeline moved to ${nextStage}`:'Activity saved');
 }
 function editActivityLog(id){
  const st=activityStore(),x=st.logs.find(v=>String(v.id)===String(id));if(!x){toast('Activity record not found');return;}
@@ -2086,19 +2086,10 @@ function saveEditedActivity(e,id){
  const linked=(db.cases||[]).find(c=>String(c.id)===oldCaseId);
  if(linked){const related=st.logs.filter(v=>String(v.caseId||'')===oldCaseId);const dates=related.filter(v=>v.appointmentDate).map(v=>v.appointmentDate).sort();linked.appointmentDate=dates.slice(-1)[0]||'';const dueDates=related.filter(v=>v.dueDate).map(v=>v.dueDate).sort();linked.nextActionDueDate=dueDates[0]||linked.nextActionDueDate||'';const latestAction=related.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).find(v=>v.nextAction);if(latestAction)linked.nextAction=latestAction.nextAction;linked.lastActivityDate=x.date;}
  saveActivityStore(st);
- // Sync the independent Next Action ledger with edits to this exact Activity.
- // Never replace a newer Pending task created by a later Activity.
- const ns=migrateLegacyNextActions(),clientKey=String(x.clientKey||''),sourceId=String(x.id),now=new Date().toISOString();
- const linkedTask=ns.items.find(t=>t.sourceType==='activity'&&String(t.sourceId)===sourceId);
- if(linkedTask){
-  if(x.nextAction&&x.dueDate)Object.assign(linkedTask,{description:x.nextAction,dueDate:x.dueDate,clientName:x.clientName||linkedTask.clientName,caseId:String(x.caseId||linkedTask.caseId||''),status:'Pending',updatedAt:now});
-  else if(linkedTask.status==='Pending')Object.assign(linkedTask,{status:'Superseded',supersededAt:now,supersededReason:'Activity Next Action cleared'});
- }else if(x.nextAction&&x.dueDate){
-  const current=ns.items.find(t=>t.clientKey===clientKey&&t.status==='Pending');
-  const latest=(st.logs||[]).filter(v=>v.clientKey===clientKey).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))[0];
-  if(!current&&latest&&String(latest.id)===sourceId)ns.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey,clientId:x.clientId||'',clientName:x.clientName||'Client',caseId:String(x.caseId||''),sourceType:'activity',sourceId,description:x.nextAction,dueDate:x.dueDate,status:'Pending',createdAt:now});
- }
- saveNextActionStore(ns);localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();closeModal();activityRender();render();toast('Activity and Next Action updated');
+ // Reconcile after edits. Only the chronologically newest Activity controls
+ // the client's current Next Action; editing an older history row cannot revive it.
+ migrateLegacyNextActions();
+localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();closeModal();activityRender();render();toast('Activity and Next Action updated');
 }
 function deleteActivityLog(id){if(!confirm('Delete this activity record?'))return;const st=activityStore();st.logs=st.logs.filter(x=>x.id!==id);saveActivityStore(st);if(window.cloudReady)window.cloudScheduleSync?.();activityRender()}
 function exportActivityLogs(){const blob=new Blob([JSON.stringify(activityStore(),null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CRM_Daily_Activities.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
@@ -3696,26 +3687,35 @@ function migrateLegacyNextActions(){
   return m?.key||'';
  };
  st.items.forEach(t=>{const k=canonicalKeyForTask(t);if(k)t.clientKey=k;});
- // Reconcile legacy overdue items against the newest Activity for each client.
- // If a later Activity already contains a new Next Action, that Activity is authoritative.
+ // Reconcile every client's pending Next Actions against the newest Activity.
+ // Any later client Activity supersedes the previous pending task, even when the
+ // new Activity has an empty Next Action field. The field text is not the signal;
+ // the existence of a later Activity is the signal.
  const latestByClient=new Map();
- logs.filter(x=>x.clientKey&&x.nextAction&&x.dueDate).forEach(x=>{
+ logs.filter(x=>x.clientKey).forEach(x=>{
   const k=x.clientKey,stamp=String(x.date||'')+' '+String(x.time||'');
   const prev=latestByClient.get(k);if(!prev||stamp>prev.stamp)latestByClient.set(k,{x,stamp});
  });
  latestByClient.forEach(({x},k)=>{
   const sourceId=String(x.id),now=new Date().toISOString();
+  const hasNewTask=!!(String(x.nextAction||'').trim()&&String(x.dueDate||'').trim());
   let current=st.items.find(t=>t.sourceType==='activity'&&String(t.sourceId)===sourceId);
-  if(!current){current={id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey:k,clientId:x.clientId||'',clientName:x.clientName||'Client',caseId:String(x.caseId||''),sourceType:'activity',sourceId,description:x.nextAction,dueDate:String(x.dueDate).slice(0,10),status:'Pending',createdAt:now};st.items.push(current);}
-  else Object.assign(current,{clientKey:k,description:x.nextAction,dueDate:String(x.dueDate).slice(0,10),clientName:x.clientName||current.clientName,caseId:String(x.caseId||current.caseId||'')});
-  st.items.forEach(t=>{if(t!==current&&t.clientKey===k&&t.status==='Pending'){t.status='Superseded';t.supersededAt=t.supersededAt||now;t.supersededBy=current.id;t.supersededReason='Reconciled against latest Activity';}});
+  if(hasNewTask){
+   if(!current){current={id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey:k,clientId:x.clientId||'',clientName:x.clientName||'Client',caseId:String(x.caseId||''),sourceType:'activity',sourceId,description:x.nextAction,dueDate:String(x.dueDate).slice(0,10),status:'Pending',createdAt:now};st.items.push(current);}
+   else Object.assign(current,{clientKey:k,description:x.nextAction,dueDate:String(x.dueDate).slice(0,10),clientName:x.clientName||current.clientName,caseId:String(x.caseId||current.caseId||''),status:'Pending'});
+  }
+  st.items.forEach(t=>{
+   if(t.clientKey===k&&t.status==='Pending'&&(!hasNewTask||t!==current)){
+    t.status='Superseded';t.supersededAt=t.supersededAt||now;t.supersededByActivityId=sourceId;t.supersededBy=hasNewTask?current.id:'';t.supersededReason='A newer Activity was recorded for this client';
+   }
+  });
  });
  // Enforce one current Pending Next Action per client, including repaired legacy records.
  const grouped=new Map();st.items.filter(t=>t.status==='Pending'&&t.clientKey).forEach(t=>{if(!grouped.has(t.clientKey))grouped.set(t.clientKey,[]);grouped.get(t.clientKey).push(t)});
  grouped.forEach(items=>{if(items.length<2)return;items.sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))||String(b.id||'').localeCompare(String(a.id||'')));const current=items[0];items.slice(1).forEach(t=>{t.status='Superseded';t.supersededAt=t.supersededAt||new Date().toISOString();t.supersededBy=current.id;});});
  saveNextActionStore(st);return st;
 }
-function nextActionLinkToNewActivity(clientKey,activityId){const st=migrateLegacyNextActions(),pending=st.items.filter(t=>t.status==='Pending'&&t.clientKey===clientKey&&!(t.sourceType==='activity'&&String(t.sourceId)===String(activityId)));if(!pending.length)return;const body=`<div class="small" style="margin-bottom:12px">This client has previous pending Next Actions. Select only the item(s) this new activity has completed. Unselected items will remain pending.</div><div class="activityFormGrid">${pending.map(t=>`<label class="activityFull" style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" name="naLinkChoice" value="${activityEsc(t.id)}"><span><b>${activityEsc(t.description)}</b><small style="display:block;color:#778096">Due ${activityEsc(t.dueDate)} · ${activityEsc(t.status)}</small></span></label>`).join('')}<div class="activityFull"><button class="activitySaveBtn" onclick="(function(){const ids=[...document.querySelectorAll('input[name=naLinkChoice]:checked')].map(x=>x.value),s=migrateLegacyNextActions();ids.forEach(id=>{const t=s.items.find(x=>x.id===id);if(t){t.status='Completed';t.completedAt=new Date().toISOString();t.completedByActivityId='${activityEsc(activityId)}'}});saveNextActionStore(s);closeModal();render();toast(ids.length?ids.length+' previous Next Action(s) completed':'No previous Next Actions changed')})()">Confirm Selection</button></div><div class="activityFull"><button type="button" class="textButton" onclick="closeModal()">Keep all pending</button></div></div>`;modal('Link Completed Next Actions',body,true);}
+function nextActionLinkToNewActivity(clientKey,activityId){migrateLegacyNextActions();}
 function nextActionSetStatus(id,status,extra={}){const st=migrateLegacyNextActions(),t=st.items.find(x=>x.id===id);if(!t)return;Object.assign(t,extra,{status,updatedAt:new Date().toISOString()});saveNextActionStore(st);render();}
 function nextActionManage(id){const st=migrateLegacyNextActions(),t=st.items.find(x=>x.id===id);if(!t)return;const esc=activityEsc;const body=`<div class="activityFormGrid"><div class="activityFull"><b>${esc(t.clientName)}</b><div class="small">${esc(t.description)} · Due ${esc(t.dueDate)}</div></div><button class="activitySaveBtn" onclick="nextActionComplete('${esc(id)}')">✓ Complete</button><button class="activitySaveBtn" style="background:#64748b" onclick="nextActionReschedule('${esc(id)}')">↻ Reschedule</button><button class="activitySaveBtn" style="background:#b45353" onclick="nextActionCancel('${esc(id)}')">✕ Cancel</button></div>`;modal('Manage Next Action',body);}
 function nextActionComplete(id){const st=migrateLegacyNextActions(),t=st.items.find(x=>x.id===id);if(!t)return;const logs=(activityStore().logs||[]).filter(x=>x.clientKey===t.clientKey);const opts=logs.map(x=>`<option value="${activityEsc(x.id)}">${activityEsc(x.date)} · ${activityEsc(x.type)} · ${activityEsc(x.result||'')}</option>`).join('');const body=`<div class="activityFormGrid"><label class="activityFull">Completed by Activity (optional)<select id="naCompletedBy"><option value="">Manual completion</option>${opts}</select></label><div class="activityFull"><button class="activitySaveBtn" onclick="nextActionSetStatus('${activityEsc(id)}','Completed',{completedAt:new Date().toISOString(),completedByActivityId:document.getElementById('naCompletedBy').value||''});closeModal();toast('Next Action completed')">Confirm Complete</button></div></div>`;modal('Complete Next Action',body);}
