@@ -2039,7 +2039,7 @@ function activityRender(){
  <label>Appointment Date (optional)<input name="appointmentDate" type="date"></label>
  <label id="activityNextStageWrap">Update Pipeline Stage (optional)<select name="nextStage"><option value="">No status change</option><option value="Standby">Standby · Nurture</option><option value="To Approach">To Approach</option><option value="To Meet Up">To Meet Up</option><option value="To Follow Up">To Follow Up</option><option value="To Submit">To Submit</option><option value="To Approve">To Approve</option></select></label>
  <label class="activityFull">Notes<textarea name="notes" rows="3" placeholder="沟通重点、客户需求、服务内容、会谈结果…"></textarea></label>
- <label class="activityFull">Next Action Due Date<input name="dueDate" type="date"></label>
+ <label class="activityFull">Next Action Due Date<input name="dueDate" type="date"><button type="button" class="textButton" onclick="clearNextActionDate(this)">↺ Reset date</button></label>
  <div class="activityFull"><button class="activitySaveBtn" type="submit">Save Activity</button></div></div></form></div>
  <div class="activitySectionHead"><div><h2>Recent Activities</h2><div class="activitySectionSub" style="margin:4px 0 0">${activityEsc(chosen)} · saved interaction records</div></div><button class="secondary activityExport" onclick="exportActivityLogs()">Export</button></div>
  <div class="activityPanel">${day.length?day.slice().sort((a,b)=>(b.time||'').localeCompare(a.time||'')).map(x=>`<div class="activityLogItem"><div class="activityLogTop"><b>${activityEsc(x.clientName||'General activity')} · ${activityEsc(x.type)}</b><span class="small">${activityEsc(x.result||'')}</span></div><div class="small muted">${activityEsc(x.time||'')}${x.appointmentDate?' · Appointment '+activityEsc(x.appointmentDate):''}</div>${x.notes?`<div class="small">${activityEsc(x.notes)}</div>`:''}<div class="activityLogFoot"><span class="small muted">${activityEsc(x.pipelineStatusAfter||'')}</span><button class="textButton" onclick="editActivityLog('${activityEsc(x.id)}')">Edit</button><button class="textButton" onclick="deleteActivityLog('${activityEsc(x.id)}')">Delete</button></div></div>`).join(''):'<div class="activityEmpty">No activities logged for this date.</div>'}</div>`;
@@ -2063,8 +2063,9 @@ function saveDetailedActivity(e){
  const date=String(fd.get('date')||activityDate());if(caseObj)caseObj.lastActivityDate=date;
  const nextAction=String(fd.get('nextAction')||'').trim(),dueDate=String(fd.get('dueDate')||'');if(dueDate&&caseObj)caseObj.nextActionDueDate=dueDate;
  const st=activityStore();st.logs.push({id:'act_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),kind:'detail',date,clientKey,clientId:client.ic||'',_clientId:client._clientId||'',clientName:client.client||'Linked client',caseId:caseObj?String(caseObj.id):'',pipelineName:caseObj?(caseObj.product||caseObj.type||'New business'):'',policyId:policy?String(policy.id):'',policyName:policy?(policy.product||policy.type||policy.policyNo||'Policy'):'',type,result,appointmentDate,notes:String(fd.get('notes')||'').trim(),nextAction,dueDate,blocker:'',pipelineStatusBefore:oldStage,pipelineStatusAfter:caseObj?normalizeStatus(caseObj.status):'',time:new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit',hour12:false})});
- saveActivityStore(st);const sourceId=String(st.logs[st.logs.length-1].id);migrateLegacyNextActions();const ns=nextActionStore();if(nextAction&&dueDate&&!ns.items.some(t=>t.sourceType==='activity'&&String(t.sourceId)===sourceId)){ns.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey,clientId:client.ic||'',clientName:client.client||'Client',caseId:caseObj?String(caseObj.id):'',sourceType:'activity',sourceId,description:nextAction,dueDate,status:'Pending',createdAt:new Date().toISOString()});saveNextActionStore(ns);}localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();window.__activityClientFilter=clientKey;activityRender();toast(nextStage&&caseObj?`Activity saved · Pipeline moved to ${nextStage}`:'Activity saved');
+ saveActivityStore(st);const sourceId=String(st.logs[st.logs.length-1].id);migrateLegacyNextActions();const ns=nextActionStore();if(dueDate&&!ns.items.some(t=>t.sourceType==='activity'&&String(t.sourceId)===sourceId)){ns.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey,clientId:client.ic||'',clientName:client.client||'Client',caseId:caseObj?String(caseObj.id):'',sourceType:'activity',sourceId,description:nextAction||'Follow-up required',dueDate,status:'Pending',createdAt:new Date().toISOString()});saveNextActionStore(ns);}localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();window.__activityClientFilter=clientKey;activityRender();toast(nextStage&&caseObj?`Activity saved · Pipeline moved to ${nextStage}`:'Activity saved');
 }
+function clearNextActionDate(btn){const wrap=btn.closest('label')||btn.parentElement;const input=wrap?.querySelector('input[type=\"date\"]')||wrap?.parentElement?.querySelector('input[type=\"date\"]');if(input){input.value='';input.dispatchEvent(new Event('change',{bubbles:true}));}}
 function editActivityLog(id){
  const st=activityStore(),x=st.logs.find(v=>String(v.id)===String(id));if(!x){toast('Activity record not found');return;}
  const esc=activityEsc;
@@ -2074,7 +2075,7 @@ function editActivityLog(id){
  <label>Contact Result<select name="result">${ACTIVITY_RESULTS.map(v=>`<option ${x.result===v?'selected':''}>${activityEsc(v)}</option>`).join('')}</select></label>
  <label>Appointment Date<input name="appointmentDate" type="date" value="${esc(x.appointmentDate||'')}"></label>
  <label class="activityFull">Notes<textarea name="notes" rows="3">${esc(x.notes||'')}</textarea></label>
- <label>Next Action<input name="nextAction" value="${esc(x.nextAction||'')}"></label><label>Next Action Due Date<input name="dueDate" type="date" value="${esc(x.dueDate||'')}"></label>
+ <label>Next Action<input name="nextAction" value="${esc(x.nextAction||'')}"></label><label>Next Action Due Date<input name="dueDate" type="date" value="${esc(x.dueDate||'')}"><button type="button" class="textButton" onclick="clearNextActionDate(this)">↺ Reset date</button></label>
  <label class="activityFull">Blocker / Pending Reason<input name="blocker" value="${esc(x.blocker||'')}"></label>
  <div class="activityFull"><button class="activitySaveBtn" type="submit">Save Changes</button></div></div></form>`;
  modal('Edit Activity',body,true);
@@ -2084,7 +2085,7 @@ function saveEditedActivity(e,id){
  const oldCaseId=String(x.caseId||'');
  Object.assign(x,{date:String(fd.get('date')||x.date),type:String(fd.get('type')||x.type),result:String(fd.get('result')||x.result),appointmentDate:String(fd.get('appointmentDate')||''),notes:String(fd.get('notes')||'').trim(),nextAction:String(fd.get('nextAction')||'').trim(),dueDate:String(fd.get('dueDate')||''),blocker:String(fd.get('blocker')||'').trim()});
  const linked=(db.cases||[]).find(c=>String(c.id)===oldCaseId);
- if(linked){const related=st.logs.filter(v=>String(v.caseId||'')===oldCaseId);const dates=related.filter(v=>v.appointmentDate).map(v=>v.appointmentDate).sort();linked.appointmentDate=dates.slice(-1)[0]||'';const dueDates=related.filter(v=>v.dueDate).map(v=>v.dueDate).sort();linked.nextActionDueDate=dueDates[0]||linked.nextActionDueDate||'';const latestAction=related.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).find(v=>v.nextAction);if(latestAction)linked.nextAction=latestAction.nextAction;linked.lastActivityDate=x.date;}
+ if(linked){const related=st.logs.filter(v=>String(v.caseId||'')===oldCaseId);const dates=related.filter(v=>v.appointmentDate).map(v=>v.appointmentDate).sort();linked.appointmentDate=dates.slice(-1)[0]||'';const dueDates=related.filter(v=>v.dueDate).map(v=>v.dueDate).sort();linked.nextActionDueDate=dueDates.length?dueDates.sort().slice(-1)[0]:'';const latestAction=related.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).find(v=>v.nextAction);if(latestAction)linked.nextAction=latestAction.nextAction;linked.lastActivityDate=x.date;}
  saveActivityStore(st);
  // Reconcile after edits. Only the chronologically newest Activity controls
  // the client's current Next Action; editing an older history row cannot revive it.
@@ -2260,7 +2261,7 @@ function caseForm(mode,ic='',reduceId='',clientName=''){
  modal(title,`<form class="newClientForm" onsubmit="saveCaseForm(event,'${mode}','${reduceId}')"><div class="formgrid">
  <div class="newClientSection full"><div class="newClientSectionTitle"><span class="sectionIcon">♙</span>Client Information</div>${clientBlock}</div>
  <div class="newClientSection full"><div class="newClientSectionTitle"><span class="sectionIcon">▥</span>Case Details</div><div class="caseDetailGrid"><div class="field"><label>Status</label><select name="status" id="caseStatus" required>${statusOptions.map(s=>`<option ${currentStatus===s?'selected':''}>${s}</option>`).join('')}</select></div>
- <div class="field"><label>Client Group</label><select name="group" required>${groupOptions}</select></div><div class="field full"><label>Product</label><select name="product"><option value="">— Optional —</option>${productOptions}</select></div><div class="field full"><label>Next Action</label><input name="nextAction" value="${String(c.nextAction||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}" placeholder="例如：发送保费方案 / 安排第二次会面"></div><div class="field"><label>Next Action Due Date</label><input type="date" name="nextActionDueDate" value="${c.nextActionDueDate||c.dueDate||''}"></div></div></div>
+ <div class="field"><label>Client Group</label><select name="group" required>${groupOptions}</select></div><div class="field full"><label>Product</label><select name="product"><option value="">— Optional —</option>${productOptions}</select></div><div class="field full"><label>Next Action</label><input name="nextAction" value="${String(c.nextAction||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}" placeholder="例如：发送保费方案 / 安排第二次会面"></div><div class="field"><label>Next Action Due Date</label><input type="date" name="nextActionDueDate" value="${c.nextActionDueDate||c.dueDate||''}"><button type="button" class="textButton" onclick="clearNextActionDate(this)">↺ Reset date</button></div></div></div>
  <div class="newClientSection full"><div class="newClientSectionTitle"><span class="sectionIcon">♢</span>Benefits <span class="sectionHint">Optional · Coverage details below</span></div><div class="benefitList">${benefitBlock}</div></div>
  <div class="field" id="inforceDateField" style="${inforceVisible?'':'display:none'}"><label>Inforce Date</label><input type="date" name="inforce" id="caseInforce" value="${c.inforce||''}" ${inforceVisible?'required':''}></div>
  <div class="field" id="commencementDateField" style="${inforceVisible?'':'display:none'}"><label>Commencement Date</label><input type="date" name="commissionStart" id="caseCommencement" value="${calculatedCommencement(c.inforce)||''}" readonly aria-readonly="true" ${inforceVisible?'required':''}><div class="small">Automatically calculated from Inforce Date. Only Inforce Date can be changed.</div></div>
@@ -2344,6 +2345,19 @@ function saveCaseForm(e,mode,reduceId){
    db.caseStageHistory.push({id:'stage_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),caseId:String(o.id),fromStage:null,toStage:normalizeStatus(storedStatus),changedAt:new Date().toISOString(),changeDate:behaviourDate(new Date()),estimatedTPC:Number(o.tpc)||null});
    if(newStatus!=='To Approach'){try{behaviourRecordTransition('To Approach',storedStatus,o,behaviourDate(new Date()));}catch(err){console.error('Vital Behaviour record failed',err);}}
  }
+ // Keep the standalone Next Action ledger in sync with a case-level due date,
+ // including an intentional reset to blank.
+ try{
+  const savedCase=db.cases.find(c=>String(c.id)===String(o.id));
+  if(savedCase){
+   const na=migrateLegacyNextActions(),caseKey=activityClientKey(savedCase),due=String(savedCase.nextActionDueDate||savedCase.dueDate||'').slice(0,10);
+   const task=na.items.find(t=>t.sourceType==='case'&&String(t.sourceId)===String(savedCase.id)&&t.status==='Pending');
+   if(!due){if(task){task.status='Cancelled';task.cancelReason='Due date reset by user';task.cancelledAt=new Date().toISOString();}}
+   else if(task){task.dueDate=due;task.description=String(savedCase.nextAction||'').trim()||'Follow-up required';task.clientName=savedCase.client||task.clientName;task.clientKey=caseKey;}
+   else{na.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey:caseKey,clientId:savedCase.ic||'',clientName:savedCase.client||'Client',caseId:String(savedCase.id),sourceType:'case',sourceId:String(savedCase.id),description:String(savedCase.nextAction||'').trim()||'Follow-up required',dueDate:due,status:'Pending',createdAt:new Date().toISOString()});}
+   saveNextActionStore(na);
+  }
+ }catch(naSyncError){console.warn('Case Next Action sync skipped',naSyncError);}
  localStorage.setItem(KEY,JSON.stringify(db));
  if(window.cloudReady)window.cloudScheduleSync?.();
  closeModal();
@@ -3670,9 +3684,9 @@ function saveNextActionStore(v){localStorage.setItem(NEXT_ACTION_KEY,JSON.string
 function migrateLegacyNextActions(){
  const st=nextActionStore();
  if(!st.migrated){
-  const add=(o)=>{if(!o.due||!o.action)return;const key=o.sourceType+':'+o.sourceId;if(st.items.some(t=>t.legacyKey===key||((t.clientKey||'')===(o.clientKey||'')&&String(t.dueDate||o.due).slice(0,10)===String(o.due).slice(0,10)&&t.description===o.action)))return;st.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey:o.clientKey||'',clientId:o.clientId||'',clientName:o.clientName||'Client',caseId:o.caseId||'',sourceType:o.sourceType,sourceId:String(o.sourceId),description:o.action,dueDate:String(o.due).slice(0,10),status:'Pending',createdAt:new Date().toISOString(),legacyKey:key});};
+  const add=(o)=>{if(!o.due)return;const key=o.sourceType+':'+o.sourceId;if(st.items.some(t=>t.legacyKey===key||((t.clientKey||'')===(o.clientKey||'')&&String(t.dueDate||o.due).slice(0,10)===String(o.due).slice(0,10)&&t.description===o.action)))return;st.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey:o.clientKey||'',clientId:o.clientId||'',clientName:o.clientName||'Client',caseId:o.caseId||'',sourceType:o.sourceType,sourceId:String(o.sourceId),description:o.action||'Follow-up required',dueDate:String(o.due).slice(0,10),status:'Pending',createdAt:new Date().toISOString(),legacyKey:key});};
   (db.cases||[]).forEach(c=>{if(c.kind==='Existing Policy')return;add({sourceType:'case',sourceId:c.id,clientKey:activityClientKey(c),clientId:c.ic||'',clientName:c.client,caseId:c.id,action:c.nextAction||'Follow up with client',due:c.nextActionDueDate||c.dueDate});});
-  const logs=activityStore().logs||[];logs.forEach(x=>{if(!x.dueDate||!x.nextAction)return;add({sourceType:'activity',sourceId:x.id,clientKey:x.clientKey,clientId:x.clientId,clientName:x.clientName,caseId:x.caseId,action:x.nextAction,due:x.dueDate});});
+  const logs=activityStore().logs||[];logs.forEach(x=>{if(!x.dueDate)return;add({sourceType:'activity',sourceId:x.id,clientKey:x.clientKey,clientId:x.clientId,clientName:x.clientName,caseId:x.caseId,action:x.nextAction||'Follow-up required',due:x.dueDate});});
   st.migrated=true;
  }
  // Repair older ledger entries whose clientKey was blank or used a legacy identity.
@@ -3698,11 +3712,11 @@ function migrateLegacyNextActions(){
  });
  latestByClient.forEach(({x},k)=>{
   const sourceId=String(x.id),now=new Date().toISOString();
-  const hasNewTask=!!(String(x.nextAction||'').trim()&&String(x.dueDate||'').trim());
+  const hasNewTask=!!String(x.dueDate||'').trim();
   let current=st.items.find(t=>t.sourceType==='activity'&&String(t.sourceId)===sourceId);
   if(hasNewTask){
-   if(!current){current={id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey:k,clientId:x.clientId||'',clientName:x.clientName||'Client',caseId:String(x.caseId||''),sourceType:'activity',sourceId,description:x.nextAction,dueDate:String(x.dueDate).slice(0,10),status:'Pending',createdAt:now};st.items.push(current);}
-   else Object.assign(current,{clientKey:k,description:x.nextAction,dueDate:String(x.dueDate).slice(0,10),clientName:x.clientName||current.clientName,caseId:String(x.caseId||current.caseId||''),status:'Pending'});
+   if(!current){current={id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey:k,clientId:x.clientId||'',clientName:x.clientName||'Client',caseId:String(x.caseId||''),sourceType:'activity',sourceId,description:String(x.nextAction||'').trim()||'Follow-up required',dueDate:String(x.dueDate).slice(0,10),status:'Pending',createdAt:now};st.items.push(current);}
+   else Object.assign(current,{clientKey:k,description:String(x.nextAction||'').trim()||'Follow-up required',dueDate:String(x.dueDate).slice(0,10),clientName:x.clientName||current.clientName,caseId:String(x.caseId||current.caseId||''),status:'Pending'});
   }
   st.items.forEach(t=>{
    if(t.clientKey===k&&t.status==='Pending'&&(!hasNewTask||t!==current)){
@@ -3724,7 +3738,7 @@ function nextActionCancel(id){const body=`<div class="activityFormGrid"><label c
 function homeNextActionDue(){
  const today=activityDate(),st=migrateLegacyNextActions();
  const items=st.items.filter(t=>t.status==='Pending'&&t.dueDate&&t.dueDate<=today).sort((a,b)=>a.dueDate.localeCompare(b.dueDate)||a.clientName.localeCompare(b.clientName));
- return `<section class="homeAppointments" style="margin-top:14px"><div class="homeContestHeading"><div><div class="section">⚑ Next Actions Due</div><div class="small">Today and overdue only</div></div><span class="small">${items.length} due</span></div>${items.length?items.slice(0,12).map(t=>`<article class="homeAppointmentRow" onclick="nextActionManage('${activityEsc(t.id)}')"><div class="homeAppointmentDate"><b>${new Date(t.dueDate+'T00:00:00').toLocaleDateString('en-MY',{day:'2-digit'})}</b><small>${new Date(t.dueDate+'T00:00:00').toLocaleDateString('en-MY',{month:'short'})}</small></div><div class="homeAppointmentInfo"><b>${activityEsc(t.clientName)}</b><small>${activityEsc(t.description)}</small></div><span class="homeAppointmentArrow" style="color:${t.dueDate<today?'#dc4b4b':'#d28a20'}">${t.dueDate<today?'Overdue':'Due'}</span></article>`).join(''):'<div class="homeContestEmpty">No next actions due today or overdue.</div>'}</section>`;
+ return `<section class="homeAppointments" style="margin-top:14px"><div class="homeContestHeading"><div><div class="section">⚑ Next Actions Due</div><div class="small">Today and overdue only</div></div><span class="small">${items.length} due</span></div>${items.length?items.slice(0,12).map(t=>`<article class="homeAppointmentRow" onclick="nextActionManage('${activityEsc(t.id)}')"><div class="homeAppointmentDate"><b>${new Date(t.dueDate+'T00:00:00').toLocaleDateString('en-MY',{day:'2-digit'})}</b><small>${new Date(t.dueDate+'T00:00:00').toLocaleDateString('en-MY',{month:'short'})}</small></div><div class="homeAppointmentInfo"><b>${activityEsc(t.clientName)}</b><small>${activityEsc(t.description||'Follow-up required')}</small></div><span class="homeAppointmentArrow" style="color:${t.dueDate<today?'#dc4b4b':'#d28a20'}">${t.dueDate<today?'Overdue':'Due'}</span></article>`).join(''):'<div class="homeContestEmpty">No next actions due today or overdue.</div>'}</section>`;
  }
 
  function iosHome(){
