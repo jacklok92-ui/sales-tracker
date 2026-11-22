@@ -2051,19 +2051,45 @@ function activityChooseClient(key){window.__activityClientFilter=key;activityRen
 function activityQuickLog(type,date){const form=document.getElementById('activityDetailForm');if(!form)return;form.elements.type.value=type;form.elements.date.value=date||activityDate();form.scrollIntoView({behavior:'smooth',block:'center'});form.elements.clientKey.focus();toast('Select a client to continue')}
 function activityResultChanged(value){/* kept for compatibility with older inline handlers */}
 function saveDetailedActivity(e){
- e.preventDefault();const f=e.currentTarget,fd=new FormData(f),clientKey=String(fd.get('clientKey')||''),client=activityClientRows().find(c=>c.key===clientKey);
- if(!client){toast('Please select a client');return}
- const caseId=String(fd.get('caseId')||''),caseObj=caseId?(db.cases||[]).find(c=>String(c.id)===caseId):null;
- const policyId=String(fd.get('policyId')||''),policy=policyId?(db.cases||[]).find(c=>String(c.id)===policyId):null;
- if(caseObj&&activityClientKey(caseObj)!==clientKey){toast('Selected Pipeline case does not belong to this client');return}
- if(policy&&activityClientKey(policy)!==clientKey){toast('Selected policy does not belong to this client');return}
- const result=String(fd.get('result')||''),type=String(fd.get('type')||''),appointmentDate=String(fd.get('appointmentDate')||''),oldStage=caseObj?normalizeStatus(caseObj.status):'',nextStage=String(fd.get('nextStage')||'');
- if(nextStage&&caseObj&&nextStage!==oldStage){caseObj.status=nextStage;try{behaviourRecordTransition(oldStage,nextStage,caseObj,behaviourDate(new Date(String(fd.get('date')||activityDate())+'T00:00:00')))}catch(err){console.warn('Pipeline behaviour log skipped',err)}}
- if(appointmentDate&&caseObj)caseObj.appointmentDate=appointmentDate;
- const date=String(fd.get('date')||activityDate());if(caseObj)caseObj.lastActivityDate=date;
- const nextAction=String(fd.get('nextAction')||'').trim(),dueDate=String(fd.get('dueDate')||'');if(dueDate&&caseObj)caseObj.nextActionDueDate=dueDate;
- const st=activityStore();st.logs.push({id:'act_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),kind:'detail',date,clientKey,clientId:client.ic||'',_clientId:client._clientId||'',clientName:client.client||'Linked client',caseId:caseObj?String(caseObj.id):'',pipelineName:caseObj?(caseObj.product||caseObj.type||'New business'):'',policyId:policy?String(policy.id):'',policyName:policy?(policy.product||policy.type||policy.policyNo||'Policy'):'',type,result,appointmentDate,notes:String(fd.get('notes')||'').trim(),nextAction,dueDate,blocker:'',pipelineStatusBefore:oldStage,pipelineStatusAfter:caseObj?normalizeStatus(caseObj.status):'',time:new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit',hour12:false})});
- saveActivityStore(st);const sourceId=String(st.logs[st.logs.length-1].id);migrateLegacyNextActions();const ns=nextActionStore();if(dueDate&&!ns.items.some(t=>t.sourceType==='activity'&&String(t.sourceId)===sourceId)){ns.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey,clientId:client.ic||'',clientName:client.client||'Client',caseId:caseObj?String(caseObj.id):'',sourceType:'activity',sourceId,description:nextAction||'Follow-up required',dueDate,status:'Pending',createdAt:new Date().toISOString()});saveNextActionStore(ns);}localStorage.setItem(KEY,JSON.stringify(db));if(window.cloudReady)window.cloudScheduleSync?.();window.__activityClientFilter=clientKey;activityRender();toast(nextStage&&caseObj?`Activity saved · Pipeline moved to ${nextStage}`:'Activity saved');
+ e.preventDefault();
+ const f=e.currentTarget;
+ const submitBtn=f.querySelector('button[type="submit"],button:not([type])');
+ if(submitBtn){if(submitBtn.dataset.saving==='1')return;submitBtn.dataset.saving='1';submitBtn.disabled=true;}
+ let saved=false;
+ try{
+  const fd=new FormData(f),clientKey=String(fd.get('clientKey')||''),client=activityClientRows().find(c=>c.key===clientKey);
+  if(!client){toast('Please select a client');return}
+  const caseId=String(fd.get('caseId')||''),caseObj=caseId?(db.cases||[]).find(c=>String(c.id)===caseId):null;
+  const policyId=String(fd.get('policyId')||''),policy=policyId?(db.cases||[]).find(c=>String(c.id)===policyId):null;
+  if(caseObj&&activityClientKey(caseObj)!==clientKey){toast('Selected Pipeline case does not belong to this client');return}
+  if(policy&&activityClientKey(policy)!==clientKey){toast('Selected policy does not belong to this client');return}
+  const result=String(fd.get('result')||''),type=String(fd.get('type')||''),appointmentDate=String(fd.get('appointmentDate')||''),oldStage=caseObj?normalizeStatus(caseObj.status):'',nextStage=String(fd.get('nextStage')||'');
+  const date=String(fd.get('date')||activityDate()),nextAction=String(fd.get('nextAction')||'').trim(),dueDate=String(fd.get('dueDate')||'').trim();
+  const record={id:'act_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),kind:'detail',date,clientKey,clientId:client.ic||'',_clientId:client._clientId||'',clientName:client.client||'Linked client',caseId:caseObj?String(caseObj.id):'',pipelineName:caseObj?(caseObj.product||caseObj.type||'New business'):'',policyId:policy?String(policy.id):'',policyName:policy?(policy.product||policy.type||policy.policyNo||'Policy'):'',type,result,appointmentDate,notes:String(fd.get('notes')||'').trim(),nextAction,dueDate,blocker:'',pipelineStatusBefore:oldStage,pipelineStatusAfter:caseObj?(nextStage||oldStage):'',time:new Date().toLocaleTimeString('en-MY',{hour:'2-digit',minute:'2-digit',hour12:false})};
+  // First durable write: activity must survive any later ledger/cloud error.
+  const st=activityStore();st.logs.push(record);saveActivityStore(st);saved=true;
+  try{
+   if(nextStage&&caseObj&&nextStage!==oldStage){caseObj.status=nextStage;try{behaviourRecordTransition(oldStage,nextStage,caseObj,behaviourDate(new Date(date+'T00:00:00')))}catch(err){console.warn('Pipeline behaviour log skipped',err)}}
+   if(appointmentDate&&caseObj)caseObj.appointmentDate=appointmentDate;
+   if(caseObj)caseObj.lastActivityDate=date;
+   if(dueDate&&caseObj)caseObj.nextActionDueDate=dueDate;
+   localStorage.setItem(KEY,JSON.stringify(db));
+   // Create a due-date task even when its description is intentionally blank.
+   const ns=nextActionStore();
+   ns.items.forEach(t=>{if(t.clientKey===clientKey&&t.status==='Pending'){t.status='Superseded';t.supersededAt=new Date().toISOString();t.supersededByActivityId=record.id;t.supersededReason='A newer Activity was recorded for this client';}});
+   if(dueDate){ns.items.push({id:'na_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8),clientKey,clientId:client.ic||'',clientName:client.client||'Client',caseId:caseObj?String(caseObj.id):'',sourceType:'activity',sourceId:String(record.id),description:nextAction||'Follow-up required',dueDate,status:'Pending',createdAt:new Date().toISOString()});}
+   saveNextActionStore(ns);
+   if(window.cloudReady)window.cloudScheduleSync?.();
+  }catch(postSaveError){console.error('Activity saved, but follow-up sync failed',postSaveError);toast('Activity saved locally; follow-up sync needs attention');}
+  window.__activityClientFilter=clientKey;activityRender();
+  if(submitBtn)submitBtn.textContent='Saved ✓';
+  toast('Activity saved');
+ }catch(err){
+  console.error('Save Activity failed',err);
+  toast(saved?'Activity saved locally; refresh to view':'Could not save Activity: '+(err?.message||'Unknown error'));
+ }finally{
+  if(submitBtn){submitBtn.disabled=false;submitBtn.dataset.saving='0';if(submitBtn.textContent==='Saved ✓')submitBtn.textContent='Save Activity';}
+ }
 }
 function clearNextActionDate(btn){const wrap=btn.closest('label')||btn.parentElement;const input=wrap?.querySelector('input[type=\"date\"]')||wrap?.parentElement?.querySelector('input[type=\"date\"]');if(input){input.value='';input.dispatchEvent(new Event('change',{bubbles:true}));}}
 function editActivityLog(id){
