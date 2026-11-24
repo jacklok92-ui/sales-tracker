@@ -4401,6 +4401,16 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
   let cloudTimer = null;
   let cloudChannel = null;
   let cloudLoading = false;
+  // Keep the newest local change queued while Cloud is loading or another upload is running.
+  let cloudSyncPending = false;
+  let pendingActivitySnapshot = null;
+  let cloudSyncDrainRunning = false;
+  function cloneForSync(value){try{return structuredClone(value)}catch(_){return JSON.parse(JSON.stringify(value??{}))}}
+  function stableSyncJson(value){
+    if(Array.isArray(value))return '['+value.map(stableSyncJson).join(',')+']';
+    if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stableSyncJson(value[k])).join(',')+'}';
+    return JSON.stringify(value);
+  }
 
   const gate = document.getElementById('cloudGate');
   const launchScreen = document.getElementById('launchScreen');
@@ -4541,7 +4551,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     const {error}=await sb.from('client_aliases').upsert(rows,{onConflict:'user_id,client_id,normalized_alias',ignoreDuplicates:true});
     if(error)throw error;
   }
-  async function upsertSettings(){
+  async function upsertSettings(activitySnapshot=null){
     // The contests table only stores the standard fields. Preserve custom cumulative
     // reward configuration in app_settings so cloud reloads cannot strip it.
     const contestMetadata={};
@@ -4559,9 +4569,14 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       {key:'language',value:{lang:appLang||'zh'}},
       {key:'notifications',value:db.notificationPrefs||DEFAULT_NOTIFICATION_PREFS},
       {key:'contestMetadata',value:contestMetadata},
-      {key:'dailyActivities',value:activityStore()}
+      {key:'dailyActivities',value:activitySnapshot||activityStore()}
     ].map(x=>({user_id:cloudUser.id,setting_key:x.key,setting_value:x.value,updated_at:new Date().toISOString()}));
     const {error}=await sb.from('app_settings').upsert(payload,{onConflict:'user_id,setting_key'});if(error)throw error;
+    // Read-after-write verification: a successful HTTP response alone is not enough.
+    const expected=activitySnapshot||activityStore();
+    const {data:verified,error:verifyError}=await sb.from('app_settings').select('setting_value').eq('user_id',cloudUser.id).eq('setting_key','dailyActivities').maybeSingle();
+    if(verifyError)throw verifyError;
+    if(!verified||stableSyncJson(verified.setting_value)!==stableSyncJson(expected))throw new Error('Cloud verification failed: dailyActivities did not match the latest local snapshot.');
   }
   async function cloudExportSnapshot(){
     if(!cloudUser) return null;
@@ -4652,9 +4667,15 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
     finally{cloudLoading=false;}
   };
 
-  async function cloudUploadAll(){
-    if(!cloudUser||cloudLoading)return;
+  async function cloudUploadAll(activitySnapshot=null){
+    if(!cloudUser||!window.cloudReady)return false;
+    if(cloudLoading||cloudSyncing){
+      cloudSyncPending=true;
+      if(activitySnapshot)pendingActivitySnapshot=activitySnapshot;
+      return false;
+    }
     cloudSyncing=true;cloudSyncStatus('Syncing…','sync');
+    let succeeded=false;
     try{
       const clientMap=await upsertClients();
       await upsertPolicies(clientMap);
@@ -4662,15 +4683,36 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       await upsertContests();
       await upsertCoverage(clientMap);
       await upsertClientAliases();
-      await upsertSettings();
+      await upsertSettings(activitySnapshot);
       localStorage.setItem(KEY,JSON.stringify(db));
-      cloudSyncStatus('Synced','');
-    }catch(e){console.error('Cloud sync upload failed',e);cloudSyncStatus('Sync failed','off');}
-    finally{cloudSyncing=false;}
+      succeeded=true;
+      cloudSyncStatus('Synced · Verified','');
+    }catch(e){console.error('Cloud sync upload failed',e);cloudSyncStatus('Sync failed · '+(e?.message||'Unknown error'),'off');}
+    finally{
+      cloudSyncing=false;
+      if(cloudSyncPending)queueCloudSyncDrain(250);
+    }
+    return succeeded;
+  }
+  function queueCloudSyncDrain(delay=0){
+    if(!window.cloudReady||!cloudUser||!cloudSyncPending)return;
+    clearTimeout(cloudTimer);
+    cloudTimer=setTimeout(async()=>{
+      if(cloudLoading||cloudSyncing){queueCloudSyncDrain(350);return;}
+      if(cloudSyncDrainRunning)return;
+      cloudSyncDrainRunning=true;
+      const snapshot=pendingActivitySnapshot;
+      cloudSyncPending=false;pendingActivitySnapshot=null;
+      try{await cloudUploadAll(snapshot)}
+      finally{cloudSyncDrainRunning=false;if(cloudSyncPending)queueCloudSyncDrain(250)}
+    },delay);
   }
   window.cloudScheduleSync=function(){
-    if(!window.cloudReady||cloudLoading)return;
-    clearTimeout(cloudTimer); cloudTimer=setTimeout(()=>cloudUploadAll(),650);
+    if(!window.cloudReady||!cloudUser)return;
+    cloudSyncPending=true;
+    // Preserve the latest Activity payload even if a cloud fetch subsequently refreshes localStorage.
+    pendingActivitySnapshot=cloneForSync(activityStore());
+    queueCloudSyncDrain(650);
   };
   async function fetchCloud(){
     const [clientsR,policiesR,motionsR,contestsR,covR,settingsR,aliasesR]=await Promise.all([
@@ -4775,7 +4817,7 @@ html,body{width:100%!important;max-width:100%!important;overflow-x:hidden!import
       if(!cloudHasAliases&&hadLocalAliases) await upsertClientAliases();
       render();
     }
-    finally{cloudLoading=false;}
+    finally{cloudLoading=false;if(cloudSyncPending)queueCloudSyncDrain(250);}
   }
   function setupRealtime(){
     if(cloudChannel)sb.removeChannel(cloudChannel);
